@@ -102,10 +102,17 @@ pub struct ClientCapabilities {
 /// Server capabilities
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServerCapabilities {
-    /// Optional custom capabilities
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom: Option<HashMap<String, serde_json::Value>>,
-}
+    pub experimental: Option<HashMap<String, HashMap<String, serde_json::Value>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<PromptsCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<ResourcesCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<ToolsCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging: Option<LoggingCapability>,
+}   
 
 /// Logging levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,16 +273,3 @@ pub struct LoggingCapability {
     // If not returned by server, you can leave this empty
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ServerCapabilities {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub experimental: Option<HashMap<String, HashMap<String, serde_json::Value>>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompts: Option<PromptsCapability>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resources: Option<ResourcesCapability>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<ToolsCapability>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub logging: Option<LoggingCapability>,
-}
