@@ -37,19 +37,25 @@ enjoy!
 
 ## Getting Started
 
-1. **Add Dependencies:**  
-   In your `Cargo.toml`, add:
-   ```toml
-   [dependencies]
-   mcp-rust-sdk = { git = "https://github.com/yourusername/mcp-rust-sdk.git", branch = "main" }
-   anyhow = "1.0"
-   tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-   serde = { version = "1", features = ["derive"] }
-   serde_json = "1"
-   ```
+1. Get the MCP server you want. 
+    - ex: `uvx create-mcp-server` .
+    - make sure you set it up, so cd into it and `uv sync --dev --all-extras`
 
-2. **Server Requirements:**  
-   You'll need an MCP-compliant server. The MCP protocol is language-agnostic. If you don't have your own server, you can use a default MCP server implemented in Python or any other language. Make sure it supports `stdin`/`stdout` communication and MCP initialization.
+2. Look at `src/main.rs`. 
+
+```rust
+let client = ClientBuilder::new("uv")
+        .directory("/Users/darin/shit/notes_simple")
+        .arg("run")
+        .arg("notes-simple")
+        .implementation("my-amazing-client", "1.0.0")
+        .spawn_and_initialize()
+        .await?;
+```
+
+3. Modify directory and args to point to your server. 
+
+
 
 ## Usage
 
