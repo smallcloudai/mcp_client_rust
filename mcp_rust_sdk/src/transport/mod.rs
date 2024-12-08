@@ -55,21 +55,30 @@ impl<'de> Visitor<'de> for MessageVisitor {
         let value = serde_json::Value::Object(obj);
         
         // Determine message type based on JSON-RPC 2.0 spec
-        if value.get("id").is_some() {
-            if value.get("result").is_some() || value.get("error").is_some() {
-                eprintln!("Deserializing as response...");
-                Ok(Message::Response(Response::deserialize(value).map_err(de::Error::custom)?))
-            } else if value.get("method").is_some() {
+        if let Some(id_val) = value.get("id") {
+            // If `id` is present, it must be a valid string or number for request/response
+            if value.get("method").is_some() {
+                // Request must have `method` and `id`
                 eprintln!("Deserializing as request...");
+                eprintln!("Value: {:?}", value);
                 Ok(Message::Request(Request::deserialize(value).map_err(de::Error::custom)?))
+            } else if value.get("result").is_some() || value.get("error").is_some() {
+                // Response must have `id` and either result or error
+                eprintln!("Deserializing as response...");
+                eprintln!("Value: {:?}", value);
+                Ok(Message::Response(Response::deserialize(value).map_err(de::Error::custom)?))
             } else {
-                Err(de::Error::custom("invalid message format: missing required fields"))
+                // `id` present but no `method` or `result/error` => invalid
+                Err(de::Error::custom("invalid message: 'id' present without 'method' or 'result/error'"))
             }
         } else if value.get("method").is_some() {
+            // Notification (no id, has method)
             eprintln!("Deserializing as notification...");
+            eprintln!("Value: {:?}", value);
             Ok(Message::Notification(Notification::deserialize(value).map_err(de::Error::custom)?))
         } else {
-            Err(de::Error::custom("invalid message format: missing required fields"))
+            // No `id`, no `method` => invalid
+            Err(de::Error::custom("invalid message: missing 'id' and 'method'"))
         }
     }
 }

@@ -36,14 +36,21 @@ pub struct Progress {
 
 /// Resource contents
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(untagged)]
 pub enum ResourceContents {
-    #[serde(rename = "text")]
-    Text { text: String },
-    #[serde(rename = "blob")]
-    Blob { data: Vec<u8> },
+    Text {
+        uri: String,
+        #[serde(rename = "mimeType")]
+        mime_type: Option<String>,
+        text: String,
+    },
+    Blob {
+        uri: String,
+        #[serde(rename = "mimeType")]
+        mime_type: Option<String>,
+        blob: String,
+    },
 }
-
 /// A resource in the system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
@@ -249,22 +256,44 @@ pub struct CompleteResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptsCapability {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub listChanged: Option<bool>,
+    #[serde(rename = "listChanged")]
+    pub list_changed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourcesCapability {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subscribe: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub listChanged: Option<bool>,
+    #[serde(rename = "listChanged")]
+    pub list_changed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsCapability {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub listChanged: Option<bool>,
+    #[serde(rename = "listChanged")]
+    pub list_changed: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPromptResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub messages: Vec<PromptMessage>,
+}
+
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallToolResult {
+    pub content: Vec<MessageContent>,
+    #[serde(rename = "isError")]
+    pub is_error: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadResourceResult {
+    pub contents: Vec<ResourceContents>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

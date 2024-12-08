@@ -1,13 +1,17 @@
 use std::sync::Arc;
 use futures::StreamExt;
 use tokio::sync::{RwLock, Mutex};
+use serde_json::Value;
 
 use crate::{
     error::{Error, ErrorCode},
     protocol::{Notification, Request, RequestId},
     transport::{Message, Transport},
-    types::{ClientCapabilities, Implementation, ServerCapabilities, InitializeResult},
+    types::{ClientCapabilities, CompleteRequest, CompleteResult, GetPromptResult, Implementation, InitializeResult, ListPromptsResult, ListResourcesResult, ServerCapabilities}, ReadResourceResult,
 };
+
+mod builder;
+pub use builder::ClientBuilder;
 
 /// MCP client state
 pub struct Client {
@@ -146,17 +150,64 @@ impl Client {
 
     /// Close the client connection
     pub async fn shutdown(&self) -> Result<(), Error> {
-        // Send shutdown request (if supported by the server)
-        self.request("shutdown", None).await?;
-
-        // Send exit notification
-        self.notify("exit", None).await?;
-
         // Close transport
         self.transport.close().await
     }
 
+    /// List available resources
+    pub async fn list_resources(&self) -> Result<ListResourcesResult, Error> {
+        let response = self.request("resources/list", None).await?;
+        serde_json::from_value(response).map_err(Error::from)
+    }
+
+    /// List available prompts
+    pub async fn list_prompts(&self) -> Result<ListPromptsResult, Error> {
+        let response = self.request("prompts/list", None).await?;
+        serde_json::from_value(response).map_err(Error::from)
+    }
+
+    /// Read a resource by URI
+    pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, Error> {
+        let params = serde_json::json!({ "uri": uri });
+        let response = self.request("resources/read", Some(params)).await?;
+        serde_json::from_value(response).map_err(Error::from)
+    }
+
+
+    // TODO: don't use this for now, shit's buggy
+
+    /// Get a prompt by ID
+    pub async fn get_prompt(
+        &self,
+        name: &str,
+        arguments: Option<std::collections::HashMap<String, String>>
+    ) -> Result<GetPromptResult, Error> {
+        let params = serde_json::json!({
+            "name": name,
+            "arguments": arguments.unwrap_or_default() // empty dict if None
+        });
+        let response = self.request("prompts/get", Some(params)).await?;
+        let result: GetPromptResult = serde_json::from_value(response)?;
+        Ok(result)
+    }
+
+    /// Complete a prompt
+    pub async fn complete(&self, request: CompleteRequest) -> Result<CompleteResult, Error> {
+        let response = self.request("prompts/complete", Some(serde_json::to_value(request)?)).await?;
+        serde_json::from_value(response).map_err(Error::from)
+    }
+
+    /// Call a tool with the given name and arguments
+    pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, Error> {
+        let params = serde_json::json!({
+            "name": name,
+            "arguments": arguments
+        });
+        self.request("tools/call", Some(params)).await
+    }
 }
+
+
 
 #[cfg(test)]
 mod tests {
