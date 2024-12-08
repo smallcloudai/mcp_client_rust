@@ -1,5 +1,25 @@
 # MCP Rust STDIO SDK 
 
+## Getting Started
+
+1. Get the MCP server you want. 
+    - ex: `uvx create-mcp-server` .
+    - make sure you set it up, so cd into it and `uv sync --dev --all-extras`
+
+2. Look at `src/main.rs`. 
+
+```rust
+let client = ClientBuilder::new("uv")
+        .directory("/Users/darin/shit/notes_simple")
+        .arg("run")
+        .arg("notes-simple")
+        .implementation("my-amazing-client", "1.0.0")
+        .spawn_and_initialize()
+        .await?;
+```
+
+3. Modify directory and args to point to your server. 
+
 The core SDK is based on https://github.com/Derek-X-Wang/mcp-rust-sdk.
 
 I added some convenience methods and a builder pattern to simplify connecting to MCP servers that follow the MCP specification.
@@ -35,25 +55,6 @@ enjoy!
   - [Contributing](#contributing)
   - [License](#license)
 
-## Getting Started
-
-1. Get the MCP server you want. 
-    - ex: `uvx create-mcp-server` .
-    - make sure you set it up, so cd into it and `uv sync --dev --all-extras`
-
-2. Look at `src/main.rs`. 
-
-```rust
-let client = ClientBuilder::new("uv")
-        .directory("/Users/darin/shit/notes_simple")
-        .arg("run")
-        .arg("notes-simple")
-        .implementation("my-amazing-client", "1.0.0")
-        .spawn_and_initialize()
-        .await?;
-```
-
-3. Modify directory and args to point to your server. 
 
 
 
