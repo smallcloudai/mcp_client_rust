@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
 
     let read_result = client.read_resource("note://internal/my_first_note").await?;
     println!("Read resource: {:?}", read_result);
-
+    
     // This just closes the transport.
     client.shutdown().await?;
     Ok(())

@@ -4,18 +4,20 @@
 
 A Rust implementation of the Model Context Protocol (MCP), designed for seamless communication between AI models and their runtime environments.
 
+THIS IS BASED ON https://github.com/Derek-X-Wang/mcp-rust-sdk.
+
+
 [![Rust CI/CD](https://github.com/Derek-X-Wang/mcp-rust-sdk/actions/workflows/rust.yml/badge.svg)](https://github.com/Derek-X-Wang/mcp-rust-sdk/actions/workflows/rust.yml)
-[![crates.io](https://img.shields.io/crates/v/mcp_rust_sdk.svg)](https://crates.io/crates/mcp_rust_sdk)
-[![Documentation](https://docs.rs/mcp_rust_sdk/badge.svg)](https://docs.rs/mcp_rust_sdk)
+
 
 ## Features
 
-- 🚀 Full implementation of MCP protocol specification
-- 🔄 Multiple transport layers (WebSocket, stdio)
-- ⚡ Async/await support using Tokio
-- 🛡️ Type-safe message handling
-- 🔍 Comprehensive error handling
-- 📦 Zero-copy serialization/deserialization
+- Full implementation of MCP protocol specification
+- Multiple transport layers (WebSocket, stdio)
+- Async/await support using Tokio
+- Type-safe message handling
+- Comprehensive error handling
+- Zero-copy serialization/deserialization
 
 ## Installation
 
@@ -28,40 +30,53 @@ mcp_rust_sdk = "0.1.0"
 
 ## Quick Start
 
-### Client Example
+### Using the Client Builder
 
 ```rust
-use mcp_rust_sdk::{Client, transport::WebSocketTransport};
+use mcp_rust_sdk::client::ClientBuilder;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a WebSocket transport
-    let transport = WebSocketTransport::new("ws://localhost:8080").await?;
+    // Create and initialize a client
+    let client = ClientBuilder::new("path/to/server")
+        .arg("--some-flag")
+        .directory("working/dir")
+        .implementation("my-client", "1.0.0")
+        .spawn_and_initialize()
+        .await?;
     
-    // Create and connect the client
-    let client = Client::new(transport);
-    client.connect().await?;
-    
-    // Make requests
-    let response = client.request("method_name", Some(params)).await?;
+    // Use the client
+    let resources = client.list_resources().await?;
+    let prompts = client.list_prompts().await?;
     
     Ok(())
 }
 ```
 
-### Server Example
+### Manual Client Setup
 
 ```rust
-use mcp_rust_sdk::{Server, transport::StdioTransport};
+use std::sync::Arc;
+use mcp_rust_sdk::{
+    client::Client,
+    transport::stdio::StdioTransport,
+    types::{Implementation, ClientCapabilities},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a stdio transport
-    let (transport, _) = StdioTransport::new();
+    // Set up transport
+    let transport = StdioTransport::with_streams(stdin, stdout)?;
     
-    // Create and start the server
-    let server = Server::new(transport);
-    server.start().await?;
+    // Create client
+    let client = Client::new(Arc::new(transport));
+    
+    // Initialize
+    let implementation = Implementation {
+        name: "my-client".to_string(),
+        version: "1.0.0".to_string(),
+    };
+    client.initialize(implementation, ClientCapabilities::default()).await?;
     
     Ok(())
 }
@@ -69,17 +84,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Transport Layers
 
-The SDK supports multiple transport layers:
-
-### WebSocket Transport
-- Ideal for network-based communication
-- Supports both secure (WSS) and standard (WS) connections
-- Built-in reconnection handling
+The SDK supports multiple transport mechanisms:
 
 ### stdio Transport
-- Perfect for local process communication
-- Lightweight and efficient
-- Great for command-line tools and local development
+- Designed for local process communication
+- Uses standard input/output streams
+- Ideal for command-line tools and local development
+
+### WebSocket Transport (Coming Soon)
+- Network-based communication
+- Support for secure (WSS) and standard (WS) connections
+- Built-in reconnection handling
 
 ## Error Handling
 
@@ -90,12 +105,27 @@ use mcp_rust_sdk::Error;
 
 match result {
     Ok(value) => println!("Success: {:?}", value),
-    Err(Error::Protocol(code, msg)) => println!("Protocol error {}: {}", code, msg),
+    Err(Error::Protocol { code, message, .. }) => {
+        println!("Protocol error {}: {}", code, message)
+    },
     Err(Error::Transport(e)) => println!("Transport error: {}", e),
     Err(e) => println!("Other error: {}", e),
 }
 ```
 
+## Available Operations
+
+The client supports the following operations:
+
+- `initialize()` - Initialize the client with the server
+- `list_resources()` - Get available resources
+- `list_prompts()` - Get available prompts
+- `read_resource()` - Read a specific resource
+- `complete()` - Complete a prompt
+- `call_tool()` - Call a server-side tool
+
+Of these, I don't think list_resources and list_prompts really work.
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
