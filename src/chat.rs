@@ -4,38 +4,80 @@ use anyhow::Result;
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestFunctionMessageArgs,
-        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-        ChatCompletionRequestToolMessageArgs, ChatCompletionTool, ChatCompletionToolChoiceOption,
+        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
+        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolChoiceOption,
         ChatCompletionToolType, CreateChatCompletionRequestArgs, FunctionObject,
     },
     Client as OpenAIClient,
 };
+use colored::*;
 use serde_json::Value;
 use std::sync::Arc;
 
 pub struct ChatState {
     pub messages: Vec<(String, String)>, // (role, content)
+    pub verbose: bool,
 }
 
 impl ChatState {
-    pub fn new() -> Self {
-        Self { messages: vec![] }
+    pub fn new(verbose: bool) -> Self {
+        Self {
+            messages: vec![],
+            verbose,
+        }
+    }
+
+    pub fn print_state(&self) {
+        if !self.verbose {
+            return;
+        }
+
+        println!("\n{}", "=".repeat(50).bright_black());
+        println!("{}", "Current Chat State:".bright_blue().bold());
+
+        for (role, content) in &self.messages {
+            let role_colored = match role.as_str() {
+                "system" => role.bright_magenta(),
+                "user" => role.bright_green(),
+                "assistant" => role.bright_cyan(),
+                "tool" => role.bright_yellow(),
+                _ => role.white(),
+            };
+
+            println!("{}: ", role_colored.bold());
+
+            if role == "tool" {
+                let parts: Vec<&str> = content.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    println!("  {}: {}", "Tool Name".yellow(), parts[0]);
+                    println!("  {}: {}", "Result".yellow(), parts[1]);
+                } else {
+                    println!("  {}", content);
+                }
+            } else {
+                println!("  {}", content);
+            }
+        }
+        println!("{}\n", "=".repeat(50).bright_black());
     }
 
     pub fn add_system_message(&mut self, content: &str) {
         self.messages
             .push(("system".to_string(), content.to_string()));
+        self.print_state();
     }
 
     pub fn add_user_message(&mut self, content: &str) {
         self.messages
             .push(("user".to_string(), content.to_string()));
+        self.print_state();
     }
 
     pub fn add_assistant_message(&mut self, content: &str) {
         self.messages
             .push(("assistant".to_string(), content.to_string()));
+        self.print_state();
     }
 
     /// Add a function response message:
@@ -45,6 +87,7 @@ impl ChatState {
     pub fn add_tool_message(&mut self, tool_name: &str, content: &str) {
         self.messages
             .push(("tool".to_string(), format!("{}|{}", tool_name, content)));
+        self.print_state();
     }
 
     pub fn to_request_messages(&self) -> Vec<ChatCompletionRequestMessage> {
@@ -168,7 +211,8 @@ pub async fn send_and_handle_function_calls(
                                 chat_state.add_tool_message(&fname, &result_str);
                             }
                             Err(e) => {
-                                chat_state.add_assistant_message(&format!("Function call failed: {}", e));
+                                chat_state
+                                    .add_assistant_message(&format!("Function call failed: {}", e));
                                 return Ok(());
                             }
                         }

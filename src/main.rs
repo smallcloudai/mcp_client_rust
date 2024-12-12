@@ -11,7 +11,7 @@ async fn main() -> Result<()> {
     let config = Config::load_config("config.json")?;
     let mcp_manager = Arc::new(MCPClientManager::new(&config.mcp_servers).await?);
 
-    let mut chat_state = ChatState::new();
+    let mut chat_state = ChatState::new(true);
     chat_state.add_system_message(
         "You are a helpful assistant. You can use functions (tools) to perform actions like adding notes."
     );
