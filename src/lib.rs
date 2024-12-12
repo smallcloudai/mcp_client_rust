@@ -1,7 +1,7 @@
 pub mod chat;
 pub mod config;
-pub mod function_def;
 pub mod mcp_client_manager;
+pub mod tool_def;
 
 #[cfg(test)]
 mod tests;

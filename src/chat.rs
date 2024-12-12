@@ -1,13 +1,14 @@
-use crate::function_def::execute_function_call;
 use crate::mcp_client_manager::MCPClientManager;
+use crate::tool_def::execute_function_call;
 use anyhow::Result;
 use async_openai::{
     config::OpenAIConfig,
     types::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestFunctionMessageArgs,
         ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolChoiceOption,
-        ChatCompletionToolType, CreateChatCompletionRequestArgs, FunctionObject,
+        ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs,
+        ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionToolType,
+        CreateChatCompletionRequestArgs, FunctionObject,
     },
     Client as OpenAIClient,
 };
@@ -41,51 +42,45 @@ impl ChatState {
     /// Add a function response message:
     /// According to OpenAI spec, after a function call, you add a message:
     /// {"role":"function", "name":"function_name", "content":"result_from_function"}
-    pub fn add_function_message(&mut self, function_name: &str, content: &str) {
-        self.messages.push((
-            "function".to_string(),
-            format!("{}|{}", function_name, content),
-        ));
+    pub fn add_tool_message(&mut self, tool_name: &str, content: &str) {
+        // Store the tool name and content in a similar fashion, but role = "tool"
+        self.messages
+            .push(("tool".to_string(), format!("{}|{}", tool_name, content)));
     }
 
     pub fn to_request_messages(&self) -> Vec<ChatCompletionRequestMessage> {
         self.messages
             .iter()
-            .map(|(role, content)| {
-                match role.as_str() {
-                    "system" => ChatCompletionRequestMessage::System(
-                        ChatCompletionRequestSystemMessageArgs::default()
-                            .content(content.as_str())
+            .map(|(role, content)| match role.as_str() {
+                "system" => ChatCompletionRequestMessage::System(
+                    ChatCompletionRequestSystemMessageArgs::default()
+                        .content(content.as_str())
+                        .build()
+                        .unwrap(),
+                ),
+                "user" => ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessageArgs::default()
+                        .content(content.as_str())
+                        .build()
+                        .unwrap(),
+                ),
+                "assistant" => ChatCompletionRequestMessage::Assistant(
+                    ChatCompletionRequestAssistantMessageArgs::default()
+                        .content(content.as_str())
+                        .build()
+                        .unwrap(),
+                ),
+                "tool" => {
+                    let mut split = content.splitn(2, '|');
+                    let tcontent = split.next().unwrap_or("");
+                    ChatCompletionRequestMessage::Tool(
+                        ChatCompletionRequestToolMessageArgs::default()
+                            .content(tcontent)
                             .build()
                             .unwrap(),
-                    ),
-                    "user" => ChatCompletionRequestMessage::User(
-                        ChatCompletionRequestUserMessageArgs::default()
-                            .content(content.as_str())
-                            .build()
-                            .unwrap(),
-                    ),
-                    "assistant" => ChatCompletionRequestMessage::Assistant(
-                        ChatCompletionRequestAssistantMessageArgs::default()
-                            .content(content.as_str())
-                            .build()
-                            .unwrap(),
-                    ),
-                    "function" => {
-                        // Content is stored as "function_name|result"
-                        let mut split = content.splitn(2, '|');
-                        let fname = split.next().unwrap();
-                        let fcontent = split.next().unwrap_or("");
-                        ChatCompletionRequestMessage::Function(
-                            ChatCompletionRequestFunctionMessageArgs::default()
-                                .name(fname)
-                                .content(fcontent)
-                                .build()
-                                .unwrap(),
-                        )
-                    }
-                    _ => panic!("Unknown role"),
+                    )
                 }
+                _ => panic!("Unknown role"),
             })
             .collect()
     }
@@ -164,7 +159,7 @@ async fn send_and_handle_function_calls(
                 match execute_function_call(&fname, &arguments, mcp_manager).await {
                     Ok(result_str) => {
                         // Add a function message with the result
-                        chat_state.add_function_message(&fname, &result_str);
+                        chat_state.add_tool_message(&fname, &result_str);
                     }
                     Err(e) => {
                         chat_state.add_assistant_message(&format!("Function call failed: {}", e));
