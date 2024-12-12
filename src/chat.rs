@@ -149,15 +149,34 @@ pub async fn handle_user_input(
     Ok(())
 }
 
-
-// TODO: Add a response type enum to determine if tool call is available # AI! 
+/// Represents the type of response received from the OpenAI API
+#[derive(Debug)]
 enum ResponseType {
+    /// A regular assistant message with just content
     AssistantMessage {
-        
-    }
-    AssistantMessageWithToolCalls
+        content: Option<String>,
+    },
+    /// An assistant message that includes tool calls
+    AssistantMessageWithToolCalls {
+        content: Option<String>,
+        tool_calls: Vec<async_openai::types::ChatCompletionTool>,
+    },
 }
 
+impl ResponseType {
+    fn from_response(message: &async_openai::types::ChatCompletionResponseMessage) -> Self {
+        if let Some(tool_calls) = &message.tool_calls {
+            ResponseType::AssistantMessageWithToolCalls {
+                content: message.content.clone(),
+                tool_calls: tool_calls.to_vec(),
+            }
+        } else {
+            ResponseType::AssistantMessage {
+                content: message.content.clone(),
+            }
+        }
+    }
+}
 
 
 /// This function sends the messages to OpenAI and if a tool call is requested,
