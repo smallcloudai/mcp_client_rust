@@ -12,8 +12,7 @@ target/
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-mcp_rust_sdk/
-
+**/.idea
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
@@ -28,6 +27,8 @@ mcp_rust_sdk/
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
 .idea/**/shelf
+
+
 
 # AWS User-specific
 .idea/**/aws.xml

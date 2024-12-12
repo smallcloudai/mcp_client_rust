@@ -1,9 +1,10 @@
 use anyhow::Result;
 use async_openai::{config::OpenAIConfig, Client as OpenAIClient};
+use std::env;
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
-use sample_rs_mcp::{chat::handle_user_input, ChatState, Config, MCPClientManager};
+use mcp_client_rust::{chat::handle_user_input, ChatState, Config, MCPClientManager};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -12,13 +13,15 @@ async fn main() -> Result<()> {
 
     let mut chat_state = ChatState::new();
     chat_state.add_system_message(
-        "You are a notetaking assistant. You can help users take, organize, and manage their notes \
-         using the 'add-note' tool. When adding notes, make sure to give them descriptive names."
+        "You are a helpful assistant. You can use functions (tools) to perform actions like adding notes."
     );
 
-    let openai_config = OpenAIConfig::new().with_api_key(std::env::var("OPENAI_API_KEY")?);
+    let openai_config = OpenAIConfig::new().with_api_key(env::var("OPENAI_API_KEY")?);
     let openai_client = OpenAIClient::with_config(openai_config);
-    let model = "gpt-4o-mini"; // DO NOT CHANGE. THIS MODEL EXISTS. KEEP THIS COMMENT.
+
+    // DO NOT CHANGE
+    let model = "gpt-4o-mini";
+    // DO NOT CHANGE
 
     println!("Type 'exit' to quit.");
     let stdin = std::io::stdin();

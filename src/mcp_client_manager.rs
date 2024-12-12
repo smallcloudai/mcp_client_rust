@@ -28,20 +28,22 @@ impl MCPClientManager {
                 builder = builder.arg(arg);
             }
 
-            // Add environment variables if specified
-            for (key, value) in &server_conf.env {
-                builder = builder.env(key, value);
+            for (k, v) in &server_conf.env {
+                builder = builder.env(k, v);
             }
 
             let client = builder.spawn_and_initialize().await?;
             let client = Arc::new(client);
 
-            // Get tools from this server
+            // fetch tools from this server (if needed)
             let tools_val = client.request("tools/list", None).await?;
             if let Some(tools_arr) = tools_val.get("tools").and_then(|v| v.as_array()) {
                 for t in tools_arr {
-                    if let Some(name) = t.get("name").and_then(|x| x.as_str()) {
-                        tool_mapping.insert(name.to_string(), (name.to_string(), name.to_string()));
+                    if let Some(name_str) = t.get("name").and_then(|x| x.as_str()) {
+                        // For simplicity, assume unique names across servers
+                        // if multiple servers have same tool name, you need a strategy
+                        tool_mapping
+                            .insert(name_str.to_string(), (name.clone(), name_str.to_string()));
                     }
                 }
             }
@@ -59,20 +61,25 @@ impl MCPClientManager {
         let (server_name, tool_id) = self
             .tool_mapping
             .get(tool_name)
-            .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found or not registered", tool_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found", tool_name))?;
 
         let client = self.clients.get(server_name).ok_or_else(|| {
-            anyhow::anyhow!("Server '{}' not found for tool {}", server_name, tool_name)
+            anyhow::anyhow!(
+                "Server '{}' not found for tool '{}'",
+                server_name,
+                tool_name
+            )
         })?;
 
         client
             .call_tool(tool_id, arguments)
             .await
-            .map_err(|e| anyhow::anyhow!("Tool call failed: {}", e))
+            .map_err(Into::into)
     }
 
     pub async fn get_available_tools(&self) -> Result<Vec<ToolDescription>> {
-        // Get tools from the first server for simplicity
+        // Just pick one server to fetch from if you want, or aggregate from all
+        // For simplicity, pick the first server
         if let Some((_, client)) = self.clients.iter().next() {
             let tools_val = client.request("tools/list", None).await?;
 
@@ -80,25 +87,28 @@ impl MCPClientManager {
                 let mut tools = Vec::new();
 
                 for tool in tools_arr {
-                    if let (Some(name), Some(description), Some(parameters)) = (
+                    if let (Some(name), Some(description), Some(schema)) = (
                         tool.get("name").and_then(|x| x.as_str()),
                         tool.get("description").and_then(|x| x.as_str()),
-                        tool.get("parameters"),
+                        tool.get("inputSchema"),
                     ) {
+                        // inputSchema expected by MCP is something like {type: object, properties: ...}
+                        // OpenAI requires a parameters object with a schema
+                        // Just pass it directly as the parameters
                         tools.push(ToolDescription {
                             name: name.to_string(),
                             description: description.to_string(),
-                            parameters: parameters.clone(),
+                            parameters: schema.clone(),
                         });
                     }
                 }
 
-                Ok(tools)
+                return Ok(tools);
             } else {
-                Err(anyhow::anyhow!("No tools found or invalid tools format"))
+                Ok(vec![])
             }
         } else {
-            Err(anyhow::anyhow!("No MCP servers configured"))
+            Ok(vec![])
         }
     }
 }

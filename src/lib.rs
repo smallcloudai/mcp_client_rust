@@ -8,5 +8,4 @@ mod tests;
 
 pub use chat::ChatState;
 pub use config::Config;
-pub use function_def::FunctionCall;
 pub use mcp_client_manager::MCPClientManager;
