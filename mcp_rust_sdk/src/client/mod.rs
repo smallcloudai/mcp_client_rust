@@ -172,7 +172,7 @@ impl Client {
         let response = self.request("resources/read", Some(params)).await?;
         serde_json::from_value(response).map_err(Error::from)
     }
-
+    
 
     // TODO: don't use this for now, shit's buggy
 
@@ -204,6 +204,10 @@ impl Client {
             "arguments": arguments
         });
         self.request("tools/call", Some(params)).await
+    }
+
+    pub async fn list_tools(&self) -> Result<Value, Error> {
+        self.request("tools/list", None).await
     }
 }
 

@@ -1,14 +1,15 @@
 // mcp_rust_sdk/src/client/builder.rs
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::process::Stdio;
-use tokio::process::Command;
 use serde_json::json;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::Arc;
+use tokio::process::Command;
 
 use crate::client::Client;
+use crate::error::Error;
 use crate::transport::stdio::StdioTransport;
 use crate::types::{ClientCapabilities, Implementation};
-use crate::error::Error;
 
 pub struct ClientBuilder {
     command: String,
@@ -16,6 +17,7 @@ pub struct ClientBuilder {
     working_directory: Option<PathBuf>,
     implementation: Option<Implementation>,
     capabilities: Option<ClientCapabilities>,
+    env: HashMap<String, String>,
 }
 
 impl ClientBuilder {
@@ -26,6 +28,7 @@ impl ClientBuilder {
             working_directory: None,
             implementation: None,
             capabilities: None,
+            env: HashMap::new(),
         }
     }
 
@@ -63,6 +66,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn env(mut self, key: &str, value: &str) -> Self {
+        self.env.insert(key.to_string(), value.to_string());
+        self
+    }
+
     pub async fn spawn_and_initialize(self) -> Result<Client, Error> {
         let mut cmd = Command::new(&self.command);
         cmd.args(&self.args);
@@ -71,12 +79,22 @@ impl ClientBuilder {
             cmd.current_dir(dir);
         }
 
+        for (key, value) in &self.env {
+            cmd.env(key, value);
+        }
+
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| Error::Io(e.to_string()))?;
 
-        let child_stdout = child.stdout.take().ok_or_else(|| Error::Io("No stdout".into()))?;
-        let child_stdin = child.stdin.take().ok_or_else(|| Error::Io("No stdin".into()))?;
+        let child_stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| Error::Io("No stdout".into()))?;
+        let child_stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| Error::Io("No stdin".into()))?;
 
         let transport = StdioTransport::with_streams(child_stdout, child_stdin)?;
         let client = Client::new(Arc::new(transport));

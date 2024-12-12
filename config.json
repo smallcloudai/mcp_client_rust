@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "notes_simple": {
+            "command": "/Users/darin/.cargo/bin/uv",
+            "args": [
+                "--directory",
+                "/Users/darin/shit/notes_simple",
+                "run",
+                "notes-simple"
+            ]
+        }
+    }
+}
