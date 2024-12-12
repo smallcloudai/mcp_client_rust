@@ -4,11 +4,18 @@ use std::env;
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
+use async_openai::types::{
+    ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestAssistantMessageContentPart,
+    ChatCompletionRequestMessage,
+};
 use mcp_client_rust::{chat::handle_user_input, ChatState, Config, MCPClientManager};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("Current directory: {:?}", env::current_dir()?);
+    println!("Attempting to load config.json...");
     let config = Config::load_config("config.json")?;
+    println!("Config loaded successfully: {:?}", config);
     let mcp_manager = Arc::new(MCPClientManager::new(&config.mcp_servers).await?);
 
     let mut chat_state = ChatState::new(true);
@@ -37,9 +44,30 @@ async fn main() -> Result<()> {
 
         handle_user_input(&openai_client, &mut chat_state, &mcp_manager, line, model).await?;
 
-        if let Some((role, content)) = chat_state.messages.last() {
-            if role == "assistant" {
-                println!("Assistant: {}", content);
+        if let Some(last_message) = chat_state.messages.last() {
+            match last_message {
+                ChatCompletionRequestMessage::Assistant(msg) => {
+                    if let Some(content) = &msg.content {
+                        match content {
+                            ChatCompletionRequestAssistantMessageContent::Text(text) => {
+                                println!("Assistant: {}", text);
+                            }
+                            ChatCompletionRequestAssistantMessageContent::Array(parts) => {
+                                for part in parts {
+                                    match part {
+                                        ChatCompletionRequestAssistantMessageContentPart::Text(text) => {
+                                            println!("Assistant: {}", text.text);
+                                        }
+                                        ChatCompletionRequestAssistantMessageContentPart::Refusal(refusal) => {
+                                            println!("Assistant refused: {}", refusal.refusal);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {} // Ignore other message types
             }
         }
     }

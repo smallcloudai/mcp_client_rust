@@ -203,7 +203,10 @@ impl Client {
             "name": name,
             "arguments": arguments
         });
+        panic!("TODO: call tool");
         self.request("tools/call", Some(params)).await
+        // TODO: properly type response
+        
     }
 
     pub async fn list_tools(&self) -> Result<Value, Error> {

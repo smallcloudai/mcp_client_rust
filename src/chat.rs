@@ -6,15 +6,16 @@ use async_openai::{
     types::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionResponseMessage, ChatCompletionTool,
-        ChatCompletionToolChoiceOption, ChatCompletionToolType, CreateChatCompletionRequestArgs,
-        FunctionObject,
+        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolChoiceOption,
+        ChatCompletionToolType, CreateChatCompletionRequestArgs, FunctionObject,
+        ChatCompletionResponseMessage,
     },
     Client as OpenAIClient,
 };
 use colored::*;
 use serde_json::Value;
 use std::sync::Arc;
+use async_openai::types::ChatCompletionRequestAssistantMessage;
 
 pub struct ChatState {
     pub messages: Vec<ChatCompletionRequestMessage>,
@@ -41,24 +42,21 @@ impl ChatState {
             match msg {
                 ChatCompletionRequestMessage::System(m) => {
                     println!("{}", "system:".bright_magenta().bold());
-                    println!("  {:#?}", m.content);
+                    println!("  {:?}", m.content);
                 }
                 ChatCompletionRequestMessage::User(m) => {
                     println!("{}", "user:".bright_green().bold());
-                    println!("  {:#?}", m.content);
+                    println!("  {:?}", m.content);
                 }
                 ChatCompletionRequestMessage::Assistant(m) => {
                     println!("{}", "assistant:".bright_cyan().bold());
-                    println!("  {:#?}", m.content);
+                    println!("  {:?}", m.content);
                 }
                 ChatCompletionRequestMessage::Tool(m) => {
                     println!("{}", "tool:".bright_yellow().bold());
-                    println!("  {:#?}", m.content);
+                    println!("  {:?}", m.content);
                 }
-                ChatCompletionRequestMessage::Function(m) => {
-                    // error
-                    panic!("Function messages should not be added to the chat state");
-                }
+                _ => {}
             }
         }
 
@@ -98,7 +96,13 @@ impl ChatState {
         self.print_state();
     }
 
-    /// Add a tool response message that corresponds to a previous assistant `tool_call_id`.
+    /// Add the exact assistant message as returned by the OpenAI response (which may contain tool_calls).
+    pub fn add_assistant_message_from_response(&mut self, resp: &ChatCompletionResponseMessage) {
+        self.messages.push(resp.clone().into());
+        self.print_state();
+    }
+
+    /// Add a tool response message corresponding to the assistant's tool call.
     pub fn add_tool_message(&mut self, content: &str, tool_call_id: &str) {
         let msg = ChatCompletionRequestMessage::Tool(
             ChatCompletionRequestToolMessageArgs::default()
@@ -114,27 +118,6 @@ impl ChatState {
     pub fn to_request_messages(&self) -> Vec<ChatCompletionRequestMessage> {
         self.messages.clone()
     }
-
-    /// Add the assistant message that indicates tool calls directly from the response.
-    /// This uses the `ChatCompletionResponseMessage` returned by the OpenAI API.
-    pub fn add_assistant_message_from_response(&mut self, resp: &ChatCompletionResponseMessage) {
-        // The assistant message might have content or might be empty.
-        // We'll include it even if empty, as required.
-        let content = resp.content.as_deref().unwrap_or("");
-        let msg = ChatCompletionRequestMessage::Assistant(
-            ChatCompletionRequestAssistantMessageArgs::default()
-                .content(content)
-                .tool_calls(
-                    resp.tool_calls
-                        .as_ref()
-                        .map(|tool_calls| tool_calls.to_vec())
-                        .unwrap_or_default(),)
-                .build()
-                .unwrap(),
-        );
-        self.messages.push(msg);
-        self.print_state();
-    }
 }
 
 pub async fn handle_user_input(
@@ -149,38 +132,10 @@ pub async fn handle_user_input(
     Ok(())
 }
 
-/// Represents the type of response received from the OpenAI API
-#[derive(Debug)]
-enum ResponseType {
-    /// A regular assistant message with just content
-    AssistantMessage {
-        content: Option<String>,
-    },
-    /// An assistant message that includes tool calls
-    AssistantMessageWithToolCalls {
-        content: Option<String>,
-        tool_calls: Vec<async_openai::types::ChatCompletionTool>,
-    },
-}
-
-impl ResponseType {
-    fn from_response(message: &async_openai::types::ChatCompletionResponseMessage) -> Self {
-        if let Some(tool_calls) = &message.tool_calls {
-            ResponseType::AssistantMessageWithToolCalls {
-                content: message.content.clone(),
-                tool_calls: tool_calls.to_vec(),
-            }
-        } else {
-            ResponseType::AssistantMessage {
-                content: message.content.clone(),
-            }
-        }
-    }
-}
-
-
-/// This function sends the messages to OpenAI and if a tool call is requested,
-/// executes it and then repeats until a final assistant message is obtained.
+/// This function sends the messages to OpenAI. If a tool call is requested, it executes the tool
+/// and appends a `tool` message with the result, then repeats until a final assistant message is obtained.
+///
+/// TODO: it should not do that
 pub async fn send_and_handle_function_calls(
     openai_client: &OpenAIClient<OpenAIConfig>,
     chat_state: &mut ChatState,
@@ -190,7 +145,7 @@ pub async fn send_and_handle_function_calls(
     loop {
         let messages = chat_state.to_request_messages();
 
-        // Get available tools as functions
+        // Get available tools
         let available_tools = mcp_manager.get_available_tools().await?;
         let functions: Vec<ChatCompletionTool> = available_tools
             .iter()
@@ -220,23 +175,18 @@ pub async fn send_and_handle_function_calls(
         };
 
         let response = openai_client.chat().create(request).await?;
-        
-        // determine if tool call available
-        
-        
         let choice = response
             .choices
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No completion choice returned"))?;
 
-        // Check for tool calls
+        // Check if assistant wants to call a tool
         if let Some(ref tool_calls) = choice.message.tool_calls {
-            // The assistant decided to call a tool.
-            // First, add the assistant message from this response (even if empty content).
+            // Add the assistant message from this turn
             chat_state.add_assistant_message_from_response(&choice.message);
 
-            // Execute each tool call and then add the tool message
+            // For each tool call, execute and add a tool message
             for tool_call in tool_calls {
                 let fname = tool_call.function.name.clone();
                 let arguments = tool_call.function.arguments.clone();
@@ -246,13 +196,14 @@ pub async fn send_and_handle_function_calls(
                 let result_value = execute_function_call(&fname, &arguments, mcp_manager).await?;
                 let result_str = serde_json::to_string(&result_value)?;
 
+                // Add the tool message referencing the tool_call_id provided by the assistant
                 chat_state.add_tool_message(&result_str, &tool_call_id);
             }
-            // After adding tool messages, continue loop to let assistant process them
+
+            // After adding tool messages, loop again to get the next assistant response
             continue;
         } else {
-            // No tool calls, so this should be a final assistant message
-            // Just add the assistant message from the response
+            // No tool calls, final assistant message
             chat_state.add_assistant_message_from_response(&choice.message);
             break;
         }
