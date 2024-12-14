@@ -1,12 +1,13 @@
 [package]
-name = "mcp_rust_sdk"
+name = "mcp_client_rs"
 version = "0.1.1"
 edition = "2021"
-description = "Rust SDK for the Model Context Protocol (MCP)"
-license = "MIT"
-repository = "https://github.com/Derek-X-Wang/mcp-rust-sdk"
-documentation = "https://github.com/Derek-X-Wang/mcp-rust-sdk"
-keywords = ["mcp", "sdk", "protocol", "machine-learning", "ai"]
+description = "Rust client SDK for the Model Context Protocol (MCP)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darinmilner/mcp-client-rust"
+documentation = "https://github.com/darinmilner/mcp-client-rust"
+keywords = ["mcp", "client", "protocol", "machine-learning", "ai"]
+categories = ["api-bindings", "development-tools"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
