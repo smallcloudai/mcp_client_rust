@@ -1,9 +1,10 @@
 use crate::config::MCPServerConfig;
-use anyhow::Result;
+use anyhow::{Error, Result};
 use mcp_client_rs::client::{Client, ClientBuilder};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use mcp_client_rs::CallToolResult;
 
 #[derive(Debug)]
 pub struct ToolDescription {
@@ -58,7 +59,7 @@ impl MCPClientManager {
         })
     }
 
-    pub async fn call_tool(&self, tool_name: &str, arguments: Value) -> Result<Value> {
+    pub async fn call_tool(&self, tool_name: &str, arguments: Value) -> std::result::Result<CallToolResult, Error> {
         let (server_name, tool_id) = self
             .tool_mapping
             .get(tool_name)
