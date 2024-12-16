@@ -1,13 +1,18 @@
-use std::sync::Arc;
 use futures::StreamExt;
-use tokio::sync::{RwLock, Mutex};
 use serde_json::Value;
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     error::{Error, ErrorCode},
     protocol::{Notification, Request, RequestId},
     transport::{Message, Transport},
-    types::{ClientCapabilities, CompleteRequest, CompleteResult, GetPromptResult, Implementation, InitializeResult, ListPromptsResult, ListResourcesResult, ServerCapabilities}, ReadResourceResult,
+    types::{
+        CallToolRequest, CallToolResult, ClientCapabilities, CompleteRequest, CompleteResult,
+        GetPromptResult, Implementation, InitializeResult, ListPromptsResult, ListResourcesResult,
+        ListToolsResult, ServerCapabilities, Tool,
+    },
+    ReadResourceResult,
 };
 
 mod builder;
@@ -83,7 +88,7 @@ impl Client {
     }
 
     /// Send a request to the server and wait for the response.
-    /// 
+    ///
     /// This method will block until a response is received from the server.
     /// If the server returns an error, it will be propagated as an `Error`.
     pub async fn request(
@@ -119,10 +124,9 @@ impl Client {
                             &error.message,
                         ));
                     }
-                    return response.result.ok_or_else(|| Error::protocol(
-                        ErrorCode::InternalError,
-                        "Response missing result",
-                    ));
+                    return response.result.ok_or_else(|| {
+                        Error::protocol(ErrorCode::InternalError, "Response missing result")
+                    });
                 }
             }
         }
@@ -140,7 +144,9 @@ impl Client {
         params: Option<serde_json::Value>,
     ) -> Result<(), Error> {
         let notification = Notification::new(method, params);
-        self.transport.send(Message::Notification(notification)).await
+        self.transport
+            .send(Message::Notification(notification))
+            .await
     }
 
     /// Get the server capabilities
@@ -172,7 +178,6 @@ impl Client {
         let response = self.request("resources/read", Some(params)).await?;
         serde_json::from_value(response).map_err(Error::from)
     }
-    
 
     // TODO: don't use this for now, shit's buggy
 
@@ -180,7 +185,7 @@ impl Client {
     pub async fn get_prompt(
         &self,
         name: &str,
-        arguments: Option<std::collections::HashMap<String, String>>
+        arguments: Option<std::collections::HashMap<String, String>>,
     ) -> Result<GetPromptResult, Error> {
         let params = serde_json::json!({
             "name": name,
@@ -193,36 +198,50 @@ impl Client {
 
     /// Complete a prompt
     pub async fn complete(&self, request: CompleteRequest) -> Result<CompleteResult, Error> {
-        let response = self.request("prompts/complete", Some(serde_json::to_value(request)?)).await?;
+        let response = self
+            .request("prompts/complete", Some(serde_json::to_value(request)?))
+            .await?;
+        serde_json::from_value(response).map_err(Error::from)
+    }
+
+    /// List available tools
+    pub async fn list_tools(&self) -> Result<ListToolsResult, Error> {
+        let response = self.request("tools/list", None).await?;
         serde_json::from_value(response).map_err(Error::from)
     }
 
     /// Call a tool with the given name and arguments
-    pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, Error> {
-        let params = serde_json::json!({
-            "name": name,
-            "arguments": arguments
-        });
-        panic!("TODO: call tool");
-        self.request("tools/call", Some(params)).await
-        // TODO: properly type response
-        
+    pub async fn call_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<CallToolResult, Error> {
+        let request = CallToolRequest {
+            name: name.to_string(),
+            arguments,
+        };
+
+        let response = self
+            .request("tools/call", Some(serde_json::to_value(request)?))
+            .await?;
+
+        serde_json::from_value(response).map_err(Error::from)
     }
 
-    pub async fn list_tools(&self) -> Result<Value, Error> {
-        self.request("tools/list", None).await
+    /// Get a specific tool by name from the available tools
+    pub async fn get_tool(&self, name: &str) -> Result<Option<Tool>, Error> {
+        let tools = self.list_tools().await?;
+        Ok(tools.tools.into_iter().find(|t| t.name == name))
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use futures::Stream;
     use std::{pin::Pin, time::Duration};
     use tokio::sync::broadcast;
-    use futures::Stream;
-    use async_trait::async_trait;
 
     struct MockTransport {
         tx: broadcast::Sender<Result<Message, Error>>,
@@ -233,10 +252,7 @@ mod tests {
         fn new(send_delay: Duration) -> (Self, broadcast::Sender<Result<Message, Error>>) {
             let (tx, _) = broadcast::channel(10);
             let tx_clone = tx.clone();
-            (Self {
-                tx,
-                send_delay,
-            }, tx_clone)
+            (Self { tx, send_delay }, tx_clone)
         }
     }
 

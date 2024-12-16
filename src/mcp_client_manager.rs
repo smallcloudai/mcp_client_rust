@@ -1,6 +1,6 @@
 use crate::config::MCPServerConfig;
 use anyhow::Result;
-use mcp_rust_sdk::client::{Client, ClientBuilder};
+use mcp_client_rs::client::{Client, ClientBuilder};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,6 +19,7 @@ pub struct MCPClientManager {
 
 impl MCPClientManager {
     pub async fn new(configs: &HashMap<String, MCPServerConfig>) -> Result<Self> {
+        panic!("just go find the AIchat repo and use that");
         let mut clients = HashMap::new();
         let mut tool_mapping = HashMap::new();
 

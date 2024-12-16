@@ -1,10 +1,8 @@
-// mcp_rust_sdk/src/transport/stdio.rs
-
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader, AsyncWriteExt},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
     sync::broadcast,
 };
 
@@ -21,7 +19,7 @@ pub struct StdioTransport<W> {
     _sender: broadcast::Sender<Result<Message, Error>>,
 }
 
-impl<W> StdioTransport<W> 
+impl<W> StdioTransport<W>
 where
     W: AsyncWrite + Unpin + Send + 'static,
 {
@@ -32,7 +30,7 @@ where
     {
         let (sender, receiver) = broadcast::channel(100);
         let writer = tokio::sync::Mutex::new(write);
-        
+
         let sender_clone = sender.clone();
         tokio::spawn(async move {
             let mut reader = BufReader::new(read);
@@ -41,7 +39,11 @@ where
             loop {
                 line.clear();
                 match reader.read_line(&mut line).await {
-                    Ok(0) => break, // EOF
+                    Ok(0) => {
+                        // EOF reached, send an EOF error so the stream ends gracefully.
+                        let _ = sender_clone.send(Err(Error::Other("EOF".to_string())));
+                        break;
+                    }
                     Ok(_) => {
                         let trimmed = line.trim_end();
                         if trimmed.is_empty() {
@@ -78,8 +80,14 @@ where
     async fn send(&self, message: Message) -> Result<(), Error> {
         let json = serde_json::to_string(&message)?;
         let mut writer = self.writer.lock().await;
-        writer.write_all(json.as_bytes()).await.map_err(|e| Error::Io(e.to_string()))?;
-        writer.write_all(b"\n").await.map_err(|e| Error::Io(e.to_string()))?;
+        writer
+            .write_all(json.as_bytes())
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?;
+        writer
+            .write_all(b"\n")
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?;
         writer.flush().await.map_err(|e| Error::Io(e.to_string()))?;
         Ok(())
     }

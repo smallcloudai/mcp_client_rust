@@ -1,15 +1,12 @@
-// mcp_rust_sdk/src/client/builder.rs
-use serde_json::json;
+use crate::client::Client;
+use crate::error::Error;
+use crate::transport::stdio::StdioTransport;
+use crate::types::{ClientCapabilities, Implementation};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::Command;
-
-use crate::client::Client;
-use crate::error::Error;
-use crate::transport::stdio::StdioTransport;
-use crate::types::{ClientCapabilities, Implementation};
 
 pub struct ClientBuilder {
     command: String,
@@ -110,3 +107,24 @@ impl ClientBuilder {
         Ok(client)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn test_builder_spawn_failure() {
+        // Test that spawning a non-existent command returns an error
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let builder = ClientBuilder::new("non_existent_command");
+            let result = builder.spawn_and_initialize().await;
+            assert!(
+                result.is_err(),
+                "Expected error when spawning non-existent command"
+            );
+        });
+    }
+}
+ 

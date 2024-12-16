@@ -898,23 +898,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
-name = "mcp_client_rust"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-openai",
- "async-stream",
- "async-trait",
- "colored",
- "futures",
- "mcp_rust_sdk",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "mcp_rust_sdk"
+name = "mcp_client_rs"
 version = "0.1.1"
 dependencies = [
  "async-trait",
@@ -931,6 +915,22 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "mcp_client_rust"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-openai",
+ "async-stream",
+ "async-trait",
+ "colored",
+ "futures",
+ "mcp_client_rs",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1466,18 +1466,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.215"
+version = "1.0.216"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
+checksum = "0b9781016e935a97e8beecf0c933758c97a5520d32930e460142b4cd80c6338e"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.215"
+version = "1.0.216"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
+checksum = "46f859dbbf73865c6627ed570e78961cd3ac92407a2d117204c49232485da55e"
 dependencies = [
  "proc-macro2",
  "quote",

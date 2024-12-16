@@ -119,7 +119,7 @@ pub struct ServerCapabilities {
     pub tools: Option<ToolsCapability>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging: Option<LoggingCapability>,
-}   
+}
 
 /// Logging levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,7 +158,10 @@ pub enum MessageContent {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image")]
-    Image { uri: String, alt_text: Option<String> },
+    Image {
+        uri: String,
+        alt_text: Option<String>,
+    },
     #[serde(rename = "resource")]
     Resource { resource: Resource },
 }
@@ -168,6 +171,11 @@ pub enum MessageContent {
 pub struct PromptMessage {
     pub role: String,
     pub content: Vec<MessageContent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListToolsResult {
+    pub tools: Vec<Tool>,
 }
 
 /// A tool definition
@@ -282,13 +290,17 @@ pub struct GetPromptResult {
     pub messages: Vec<PromptMessage>,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallToolResult {
     pub content: Vec<MessageContent>,
     #[serde(rename = "isError")]
     pub is_error: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallToolRequest {
+    pub name: String,
+    pub arguments: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -301,4 +313,3 @@ pub struct LoggingCapability {
     // If the server supports logging, define fields as needed
     // If not returned by server, you can leave this empty
 }
-
