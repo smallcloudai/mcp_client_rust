@@ -10,122 +10,177 @@ THIS IS BASED ON https://github.com/Derek-X-Wang/mcp-rust-sdk.
 [![Rust CI/CD](https://github.com/Derek-X-Wang/mcp-rust-sdk/actions/workflows/rust.yml/badge.svg)](https://github.com/Derek-X-Wang/mcp-rust-sdk/actions/workflows/rust.yml)
 
 
-## Features
+## Getting Started
 
-- Full implementation of MCP protocol specification
-- Multiple transport layers (WebSocket, stdio)
-- Async/await support using Tokio
-- Type-safe message handling
-- Comprehensive error handling
-- Zero-copy serialization/deserialization
+1. Get the MCP server you want. 
+    - ex: `uvx create-mcp-server` .
+    - make sure you set it up, so cd into it and `uv sync --dev --all-extras`
 
-## Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-mcp_rust_sdk = "0.1.0"
-```
-
-## Quick Start
-
-### Using the Client Builder
+2. Look at `src/main.rs`. 
 
 ```rust
-use mcp_rust_sdk::client::ClientBuilder;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create and initialize a client
-    let client = ClientBuilder::new("path/to/server")
-        .arg("--some-flag")
-        .directory("working/dir")
-        .implementation("my-client", "1.0.0")
+let client = ClientBuilder::new("uv")
+        .directory("/Users/darin/shit/notes_simple")
+        .arg("run")
+        .arg("notes-simple")
+        .implementation("my-amazing-client", "1.0.0")
         .spawn_and_initialize()
         .await?;
-    
-    // Use the client
-    let resources = client.list_resources().await?;
-    let prompts = client.list_prompts().await?;
-    
+```
+
+3. Modify directory and args to point to your server. 
+
+The core SDK is based on https://github.com/Derek-X-Wang/mcp-rust-sdk.
+
+I added some convenience methods and a builder pattern to simplify connecting to MCP servers that follow the MCP specification.
+
+Also did some big debugging on the client side. STDIO had a lot of issues at first, so fixed those.
+
+This is intended to be upstreamed when I have the time. 
+
+The main modifications are:
+- Some more types
+- Ergonomics
+- Fuckton of error handling/debugging
+- STDIO focused. Don't handle websockets at all
+
+enjoy!
+
+**Key Features:**
+- **Core MCP Protocol Support:** Implements the core MCP protocol, allowing you to initialize, list resources, read resources, and call tools from MCP-compatible servers.
+- **Transport Flexibility:** Uses `stdio` transport by default, making it simple to spawn and connect to a subprocess MCP server. You can also implement custom transports for other communication methods.
+- **Typed Convenience Methods:** Offers typed return values and helper functions (e.g., `list_resources()`, `call_tool()`) so you don't have to manually serialize and deserialize JSON.
+- **Builder Pattern for Initialization:** A `ClientBuilder` streamlines the process of starting a server, setting capabilities, and initializing the connection.
+- **Extensible and Composable:** The SDK is designed to be easily integrated with your own Rust code and adapted for custom use cases.
+
+## Table of Contents
+- [Model Context Protocol (MCP) Rust SDK](#model-context-protocol-mcp-rust-sdk)
+  - [Getting Started](#getting-started)
+  - [Table of Contents](#table-of-contents)
+  - [Usage](#usage)
+    - [Spawning the Server](#spawning-the-server)
+    - [Initializing the Client](#initializing-the-client)
+    - [Typed Convenience Methods](#typed-convenience-methods)
+  - [Advanced Topics](#advanced-topics)
+  - [Contributing](#contributing)
+  - [License](#license)
+
+
+
+
+## Usage
+
+### Spawning the Server
+
+You can either:
+- **Manually start the server:** Start it in one terminal and pipe output to/from your client.
+- **Use the builder to spawn automatically:** The `ClientBuilder` allows you to spawn a subprocess server easily, attaching to its `stdin` and `stdout`.
+
+Example:
+```rust
+use mcp_rust_sdk::client::ClientBuilder;
+use anyhow::Result;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = ClientBuilder::new("uv")
+        .directory("/path/to/server_directory")
+        .arg("run")
+        .arg("notes-simple")
+        .implementation("my-amazing-client", "1.0.0")
+        .spawn_and_initialize().await?;
+
+    // Use the client...
     Ok(())
 }
 ```
 
-### Manual Client Setup
+### Initializing the Client
+
+The `ClientBuilder` automatically calls `initialize()` for you. If you want more control, you can manually initialize the `Client` by creating a transport and calling `initialize()` yourself:
 
 ```rust
-use std::sync::Arc;
 use mcp_rust_sdk::{
     client::Client,
     transport::stdio::StdioTransport,
-    types::{Implementation, ClientCapabilities},
+    types::{ClientCapabilities, Implementation},
 };
+use tokio::process::{Command, Stdio};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set up transport
-    let transport = StdioTransport::with_streams(stdin, stdout)?;
+async fn main() -> Result<()> {
+    // Spawn the server process
+    let mut child = Command::new("your_server_command")
+        .args(&["--option", "value"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
     
-    // Create client
-    let client = Client::new(Arc::new(transport));
-    
-    // Initialize
+    let child_stdout = child.stdout.take().unwrap();
+    let child_stdin = child.stdin.take().unwrap();
+
+    let transport = StdioTransport::with_streams(child_stdout, child_stdin)?;
+    let client = Client::new(transport);
+
     let implementation = Implementation {
-        name: "my-client".to_string(),
-        version: "1.0.0".to_string(),
+        name: "notes-client".to_string(),
+        version: "0.1.0".to_string(),
     };
-    client.initialize(implementation, ClientCapabilities::default()).await?;
-    
+    let capabilities = ClientCapabilities::default();
+
+    client.initialize(implementation, capabilities).await?;
+
+    // Client is ready to use
     Ok(())
 }
 ```
 
-## Transport Layers
+### Typed Convenience Methods
 
-The SDK supports multiple transport mechanisms:
+The `Client` provides typed methods to interact with the server:
 
-### stdio Transport
-- Designed for local process communication
-- Uses standard input/output streams
-- Ideal for command-line tools and local development
+- `list_resources() -> Result<ListResourcesResult, Error>`
+- `call_tool(name, arguments) -> Result<CallToolResult, Error>`
+- `read_resource(uri) -> Result<ReadResourceResult, Error>`
 
-### WebSocket Transport (Coming Soon)
-- Network-based communication
-- Support for secure (WSS) and standard (WS) connections
-- Built-in reconnection handling
+This spares you the hassle of manually constructing JSON requests and parsing raw JSON responses.
 
-## Error Handling
-
-The SDK provides comprehensive error handling through the `Error` type:
-
+For example:
 ```rust
-use mcp_rust_sdk::Error;
+let resources = client.list_resources().await?;
+println!("Resources: {:?}", resources);
 
-match result {
-    Ok(value) => println!("Success: {:?}", value),
-    Err(Error::Protocol { code, message, .. }) => {
-        println!("Protocol error {}: {}", code, message)
-    },
-    Err(Error::Transport(e)) => println!("Transport error: {}", e),
-    Err(e) => println!("Other error: {}", e),
-}
+let tool_result = client.call_tool("add-note", serde_json::json!({
+    "name": "my_first_note",
+    "content": "This is some note content."
+})).await?;
+println!("Tool result: {:?}", tool_result);
+
+let read_result = client.read_resource("note://internal/my_first_note").await?;
+println!("Read resource: {:?}", read_result);
 ```
 
-## Available Operations
+## Advanced Topics
 
-The client supports the following operations:
+- **Custom Transports:**  
+  If you don't want to use `stdio`, implement the `Transport` trait yourself. This lets you connect over TCP, WebSockets, or any other medium.
+  
+- **Custom Deserialization Logic:**  
+  If the server's output doesn't exactly match MCP or you need more control, implement custom `Deserialize` logic for certain responses.
 
-- `initialize()` - Initialize the client with the server
-- `list_resources()` - Get available resources
-- `list_prompts()` - Get available prompts
-- `read_resource()` - Read a specific resource
-- `complete()` - Complete a prompt
-- `call_tool()` - Call a server-side tool
+- **Error Handling:**  
+  The `Error` type included is flexible. Integrate it with `anyhow` or your own error types for robust error handling strategies.
 
-Of these, I don't think list_resources and list_prompts really work.
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a PR if you have improvements, bug fixes, or new features to propose.
+
+1. Fork the repo
+2. Create a new branch
+3. Add your changes and tests
+4. Submit a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
