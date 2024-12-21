@@ -1,10 +1,10 @@
 use crate::config::MCPServerConfig;
 use anyhow::{Error, Result};
 use mcp_client_rs::client::{Client, ClientBuilder};
+use mcp_client_rs::CallToolResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use mcp_client_rs::CallToolResult;
 
 #[derive(Debug)]
 pub struct ToolDescription {
@@ -20,7 +20,8 @@ pub struct MCPClientManager {
 
 impl MCPClientManager {
     pub async fn new(configs: &HashMap<String, MCPServerConfig>) -> Result<Self> {
-        panic!("just go find the AIchat repo and use that");
+        // TODO: go find the AIchat repo and use that
+
         let mut clients = HashMap::new();
         let mut tool_mapping = HashMap::new();
 
@@ -59,7 +60,11 @@ impl MCPClientManager {
         })
     }
 
-    pub async fn call_tool(&self, tool_name: &str, arguments: Value) -> std::result::Result<CallToolResult, Error> {
+    pub async fn call_tool(
+        &self,
+        tool_name: &str,
+        arguments: Value,
+    ) -> std::result::Result<CallToolResult, Error> {
         let (server_name, tool_id) = self
             .tool_mapping
             .get(tool_name)

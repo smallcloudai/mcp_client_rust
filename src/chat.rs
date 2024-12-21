@@ -6,16 +6,15 @@ use async_openai::{
     types::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolChoiceOption,
-        ChatCompletionToolType, CreateChatCompletionRequestArgs, FunctionObject,
-        ChatCompletionResponseMessage,
+        ChatCompletionRequestUserMessageArgs, ChatCompletionResponseMessage, ChatCompletionTool,
+        ChatCompletionToolChoiceOption, ChatCompletionToolType, CreateChatCompletionRequestArgs,
+        FunctionObject,
     },
     Client as OpenAIClient,
 };
 use colored::*;
 use serde_json::Value;
 use std::sync::Arc;
-use async_openai::types::ChatCompletionRequestAssistantMessage;
 
 pub struct ChatState {
     pub messages: Vec<ChatCompletionRequestMessage>,
@@ -100,6 +99,7 @@ impl ChatState {
     pub fn add_assistant_message_from_response(&mut self, resp: &ChatCompletionResponseMessage) {
         self.messages.push(resp.clone().into());
         self.print_state();
+    
     }
 
     /// Add a tool response message corresponding to the assistant's tool call.

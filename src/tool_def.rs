@@ -10,5 +10,5 @@ pub async fn execute_function_call(
     let result = mcp_manager
         .call_tool(function_name, arguments.clone())
         .await?;
-    Ok(result.to_string())
+    Ok(serde_json::to_string(&result)?)
 }
