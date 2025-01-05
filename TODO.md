@@ -1,0 +1,1 @@
+- make sure tools are handling the array of content as output
