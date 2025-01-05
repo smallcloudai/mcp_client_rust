@@ -19,6 +19,9 @@ use crate::{
 mod builder;
 pub use builder::ClientBuilder;
 
+#[cfg(test)]
+mod test;
+
 /// MCP client state
 pub struct Client {
     transport: Arc<dyn Transport>,
@@ -68,10 +71,7 @@ impl Client {
         client
     }
 
-    /// Initialize the client according to MCP spec:
-    /// Send an "initialize" request with `clientInfo`, `capabilities`, and `protocolVersion`.
-    /// Receive `InitializeResult` (including `protocolVersion`, `serverInfo`, `capabilities`).
-    /// Then send `notifications/initialized`.
+    /// Initialize the client according to MCP spec
     pub async fn initialize(
         &self,
         implementation: Implementation,
@@ -89,8 +89,6 @@ impl Client {
         let init_result: InitializeResult = serde_json::from_value(response)?;
 
         tracing::debug!(?init_result, "Received initialization response");
-
-        // Store the server capabilities
         *self.server_capabilities.write().await = Some(init_result.capabilities.clone());
 
         // After initialization completes, send the initialized notification
@@ -101,16 +99,12 @@ impl Client {
         Ok(init_result)
     }
 
-    /// Send a request to the server and wait for the response.
-    ///
-    /// This method will block until a response is received from the server or timeout occurs after 30 seconds.
-    /// If the server returns an error, it will be propagated as an `Error`.
+    /// Send a request to the server and wait for the response (30s timeout).
     pub async fn request(
         &self,
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, Error> {
-        // increment request ID
         let mut counter = self.request_counter.write().await;
         *counter += 1;
         let id = RequestId::Number(*counter);
@@ -118,10 +112,7 @@ impl Client {
         let request = Request::new(method, params, id.clone());
         tracing::debug!(?request, "Sending MCP request");
 
-        // Send request
         self.transport.send(Message::Request(request)).await?;
-
-        // Wait for matching response with timeout
         let mut rx = self.response_receiver.lock().await;
 
         match tokio::time::timeout(std::time::Duration::from_secs(30), async {
@@ -174,7 +165,7 @@ impl Client {
         }
     }
 
-    /// Send a notification to the server
+    /// Send a notification (no response expected)
     pub async fn notify(
         &self,
         method: &str,
@@ -194,67 +185,10 @@ impl Client {
         caps
     }
 
-    /// Close the client connection
+    /// Close the client
     pub async fn shutdown(&self) -> Result<(), Error> {
         tracing::info!("Shutting down MCP client");
-        // Close transport
         self.transport.close().await
-    }
-
-    /// List available resources
-    pub async fn list_resources(&self) -> Result<ListResourcesResult, Error> {
-        tracing::debug!("Listing available resources");
-        let response = self.request("resources/list", None).await?;
-        let result = serde_json::from_value(response).map_err(Error::from);
-        tracing::debug!(?result, "Received resources list");
-        result
-    }
-
-    /// List available prompts
-    pub async fn list_prompts(&self) -> Result<ListPromptsResult, Error> {
-        tracing::debug!("Listing available prompts");
-        let response = self.request("prompts/list", None).await?;
-        let result = serde_json::from_value(response).map_err(Error::from);
-        tracing::debug!(?result, "Received prompts list");
-        result
-    }
-
-    /// Read a resource by URI
-    pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, Error> {
-        tracing::debug!(%uri, "Reading resource");
-        let params = serde_json::json!({ "uri": uri });
-        let response = self.request("resources/read", Some(params)).await?;
-        let result = serde_json::from_value(response).map_err(Error::from);
-        tracing::debug!(?result, "Received resource content");
-        result
-    }
-
-    /// Get a prompt by ID
-    pub async fn get_prompt(
-        &self,
-        name: &str,
-        arguments: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<GetPromptResult, Error> {
-        tracing::debug!(%name, ?arguments, "Getting prompt");
-        let params = serde_json::json!({
-            "name": name,
-            "arguments": arguments.unwrap_or_default()
-        });
-        let response = self.request("prompts/get", Some(params)).await?;
-        let result = serde_json::from_value(response)?;
-        tracing::debug!(?result, "Received prompt");
-        Ok(result)
-    }
-
-    /// Complete a prompt
-    pub async fn complete(&self, request: CompleteRequest) -> Result<CompleteResult, Error> {
-        tracing::debug!(?request, "Completing prompt");
-        let response = self
-            .request("prompts/complete", Some(serde_json::to_value(request)?))
-            .await?;
-        let result = serde_json::from_value(response).map_err(Error::from);
-        tracing::debug!(?result, "Received completion");
-        result
     }
 
     /// List available tools
@@ -266,7 +200,8 @@ impl Client {
         result
     }
 
-    /// Call a tool with the given name and arguments
+    /// Invoke a tool. If the server returns `isError: true`, we still return the result to the caller
+    /// so the LLM or upstream logic can handle it.
     pub async fn call_tool(
         &self,
         name: &str,
@@ -277,17 +212,16 @@ impl Client {
             name: name.to_string(),
             arguments,
         };
-
         let response = self
             .request("tools/call", Some(serde_json::to_value(request)?))
             .await?;
 
-        let result = serde_json::from_value(response).map_err(Error::from);
-        tracing::debug!(?result, "Received tool result");
-        result
+        let tool_result: CallToolResult = serde_json::from_value(response)?;
+        tracing::debug!(?tool_result, "Tool call completed");
+        Ok(tool_result)
     }
 
-    /// Get a specific tool by name from the available tools
+    /// Get a specific tool by name
     pub async fn get_tool(&self, name: &str) -> Result<Option<Tool>, Error> {
         tracing::debug!(%name, "Getting specific tool");
         let tools = self.list_tools().await?;
@@ -295,126 +229,23 @@ impl Client {
         tracing::debug!(?tool, "Found tool");
         Ok(tool)
     }
+    
+    /// Read a resource
+    pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, Error> {
+        tracing::debug!(%uri, "Reading resource");
+        let params = serde_json::json!({ "uri": uri });
+        let response = self.request("resources/read", Some(params)).await?;
+        let result = serde_json::from_value(response).map_err(Error::from);
+        tracing::debug!(?result, "Received resource content");
+        result
+    }
+    
+    /// List available resources
+    pub async fn list_resources(&self) -> Result<ListResourcesResult, Error> {
+        tracing::debug!("Listing available resources");
+        let response = self.request("resources/list", None).await?;
+        let result = serde_json::from_value(response).map_err(Error::from);
+        tracing::debug!(?result, "Received resources list");
+        result
+    }
 }
-//
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use async_trait::async_trait;
-//     use futures::Stream;
-//     use std::{pin::Pin, time::Duration};
-//     use tokio::sync::broadcast;
-//
-//     struct MockTransport {
-//         tx: broadcast::Sender<Result<Message, Error>>,
-//         send_delay: Duration,
-//     }
-//
-//     impl MockTransport {
-//         fn new(send_delay: Duration) -> (Self, broadcast::Sender<Result<Message, Error>>) {
-//             let (tx, _) = broadcast::channel(10);
-//             let tx_clone = tx.clone();
-//             (Self { tx, send_delay }, tx_clone)
-//         }
-//     }
-//
-//     #[async_trait]
-//     impl Transport for MockTransport {
-//         async fn send(&self, message: Message) -> Result<(), Error> {
-//             tokio::time::sleep(self.send_delay).await;
-//             self.tx.send(Ok(message)).map(|_| ()).map_err(|_| {
-//                 Error::protocol(
-//                     crate::error::ErrorCode::InternalError,
-//                     "Failed to send message",
-//                 )
-//             })
-//         }
-//
-//         fn receive(&self) -> Pin<Box<dyn Stream<Item = Result<Message, Error>> + Send>> {
-//             let mut rx = self.tx.subscribe();
-//             Box::pin(async_stream::stream! {
-//                 while let Ok(msg) = rx.recv().await {
-//                     yield msg;
-//                 }
-//             })
-//         }
-//
-//         async fn close(&self) -> Result<(), Error> {
-//             Ok(())
-//         }
-//     }
-//
-//     #[tokio::test]
-//     async fn test_client_initialization_timeout() {
-//         // Create a mock transport with 6 second delay (longer than our timeout)
-//         let (transport, _tx) = MockTransport::new(Duration::from_secs(6));
-//         let client = Client::new(Arc::new(transport));
-//
-//         // Try to initialize with 5 second timeout
-//         let result = tokio::time::timeout(
-//             Duration::from_secs(5),
-//             client.initialize(
-//                 Implementation {
-//                     name: "test".to_string(),
-//                     version: "1.0".to_string(),
-//                 },
-//                 ClientCapabilities::default(),
-//             ),
-//         )
-//         .await;
-//
-//         // Should timeout
-//         assert!(result.is_err(), "Expected timeout error");
-//     }
-//
-//     #[tokio::test]
-//     async fn test_client_request_timeout() {
-//         // Create a mock transport with 6 second delay
-//         let (transport, _tx) = MockTransport::new(Duration::from_secs(6));
-//         let client = Client::new(Arc::new(transport));
-//
-//         // Try to send request with 5 second timeout
-//         let result = tokio::time::timeout(
-//             Duration::from_secs(5),
-//             client.request("test", Some(serde_json::json!({"key": "value"}))),
-//         )
-//         .await;
-//
-//         // Should timeout
-//         assert!(result.is_err(), "Expected timeout error");
-//     }
-//
-//     #[tokio::test]
-//     async fn test_client_notification_timeout() {
-//         // Create a mock transport with 6 second delay
-//         let (transport, _tx) = MockTransport::new(Duration::from_secs(6));
-//         let client = Client::new(Arc::new(transport));
-//
-//         // Try to send notification with 5 second timeout
-//         let result = tokio::time::timeout(
-//             Duration::from_secs(5),
-//             client.notify("test", Some(serde_json::json!({"key": "value"}))),
-//         )
-//         .await;
-//
-//         // Should timeout
-//         assert!(result.is_err(), "Expected timeout error");
-//     }
-//
-//     #[tokio::test]
-//     async fn test_client_fast_operation() {
-//         // Create a mock transport with 1 second delay (shorter than timeout)
-//         let (transport, _tx) = MockTransport::new(Duration::from_secs(1));
-//         let client = Client::new(Arc::new(transport));
-//
-//         // Try to send notification with 5 second timeout
-//         let result = tokio::time::timeout(
-//             Duration::from_secs(5),
-//             client.notify("test", Some(serde_json::json!({"key": "value"}))),
-//         )
-//         .await;
-//
-//         // Should complete before timeout
-//         assert!(result.is_ok(), "Operation should complete before timeout");
-//     }
-// }

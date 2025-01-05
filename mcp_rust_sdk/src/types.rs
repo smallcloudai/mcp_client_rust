@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::PartialEq;
 use std::collections::HashMap;
 
 /// A progress token, used to associate progress notifications with the original request
@@ -166,6 +167,49 @@ pub enum MessageContent {
     Resource { resource: Resource },
 }
 
+impl MessageContent {
+    pub fn contains(&self, substring: &str) -> bool {
+        match self {
+            MessageContent::Text { text } => text.contains(substring),
+            MessageContent::Image { alt_text, .. } => alt_text
+                .as_ref()
+                .map(|text| text.contains(substring))
+                .unwrap_or(false),
+            MessageContent::Resource { resource } => {
+                resource.title.contains(substring)
+                    || resource
+                        .description
+                        .as_ref()
+                        .map(|d| d.contains(substring))
+                        .unwrap_or(false)
+            }
+        }
+    }
+}
+
+impl PartialEq for MessageContent {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MessageContent::Text { text: t1 }, MessageContent::Text { text: t2 }) => t1 == t2,
+            (
+                MessageContent::Image {
+                    uri: u1,
+                    alt_text: a1,
+                },
+                MessageContent::Image {
+                    uri: u2,
+                    alt_text: a2,
+                },
+            ) => u1 == u2 && a1 == a2,
+            (
+                MessageContent::Resource { resource: r1 },
+                MessageContent::Resource { resource: r2 },
+            ) => r1.uri == r2.uri,
+            _ => false,
+        }
+    }
+}
+
 /// A prompt message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptMessage {
@@ -183,7 +227,8 @@ pub struct ListToolsResult {
 pub struct Tool {
     pub name: String,
     pub description: String,
-    pub schema: serde_json::Value,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: serde_json::Value,
 }
 
 /// Root definition
