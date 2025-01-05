@@ -1,14 +1,13 @@
 //! # Model Context Protocol (MCP) Rust SDK
 //! 
-//! TODO: totally innacurate n need to rewrite
 //! This SDK provides a Rust implementation of the Model Context Protocol (MCP), a protocol designed
 //! for communication between AI models and their runtime environments. The SDK supports both client
-//! and server implementations with multiple transport layers.
+//! and server implementations via a stdio-based transport layer.
 //!
 //! ## Features
 //! 
 //! - Full implementation of MCP protocol specification
-//! - Multiple transport layers (WebSocket, stdio)
+//! - Stdio transport layer
 //! - Async/await support using Tokio
 //! - Type-safe message handling
 //! - Comprehensive error handling
@@ -18,12 +17,13 @@
 //! ```no_run
 //! use std::sync::Arc;
 //! use mcp_client_rs::client::Client;
-//! use mcp_client_rs::transport::websocket::WebSocketTransport;
+//! use mcp_client_rs::transport::stdio::StdioTransport;
+//! use tokio::io::{stdin, stdout};
 //! 
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create a WebSocket transport
-//!     let transport = WebSocketTransport::new("ws://localhost:8080").await?;
+//!     // Create a Stdio transport using standard input/output
+//!     let transport = StdioTransport::with_streams(stdin(), stdout())?;
 //!     
 //!     // Create the client with Arc-wrapped transport
 //!     let client = Client::new(Arc::new(transport));
@@ -33,6 +33,10 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ## Usage
+//! The client can be used to send requests and notifications to an MCP-compliant server. 
+//! See the [client](crate::client) module for details on initialization and tool usage.
 
 /// Client module provides the MCP client implementation
 pub mod client;
@@ -42,14 +46,14 @@ pub mod error;
 pub mod protocol;
 /// Server module provides the MCP server implementation
 pub mod server;
-/// Transport layer implementations (WebSocket, stdio)
+/// Transport layer implementations (stdio)
 pub mod transport;
 /// Common types used throughout the SDK
 pub mod types;
 
 // Re-export commonly used types for convenience
 pub use error::Error;
-pub use protocol::{Request, Response, Notification};
+pub use protocol::{Notification, Request, Response};
 pub use types::*;
 
 /// The latest supported protocol version of MCP
@@ -74,7 +78,7 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
 /// all messages conform to the correct specification.
 pub const JSONRPC_VERSION: &str = "2.0";
 
-// TODO: Remove this example function
+// Simple example function to demonstrate library usage in tests
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
