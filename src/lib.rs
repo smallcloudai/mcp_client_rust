@@ -1,5 +1,6 @@
 //! # Model Context Protocol (MCP) Rust SDK
 //! 
+//! TODO: totally innacurate n need to rewrite
 //! This SDK provides a Rust implementation of the Model Context Protocol (MCP), a protocol designed
 //! for communication between AI models and their runtime environments. The SDK supports both client
 //! and server implementations with multiple transport layers.
@@ -16,8 +17,8 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use mcp_rust_sdk::client::Client;
-//! use mcp_rust_sdk::transport::websocket::WebSocketTransport;
+//! use mcp_client_rs::client::Client;
+//! use mcp_client_rs::transport::websocket::WebSocketTransport;
 //! 
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {

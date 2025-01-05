@@ -27,13 +27,8 @@ Remote server support is unplanned.
 
 ### Spec Compliance
 
-There's ambiguity in the spec around the tool call response handling. 
+Tool call responses error out if the wrong schema is used or the server returns an error.
 
-I've chosen to only treat JSON-RPC errors as Error types, so if the LLM or the server's business logic messes up, the LLM will be able to choose how to handle it. 
-
-see: https://spec.modelcontextprotocol.io/specification/server/tools/#error-handling
-
-Resources should be fully implemented. 
 
 ### Typed Convenience Methods
 
