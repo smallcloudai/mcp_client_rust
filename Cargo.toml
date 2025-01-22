@@ -4,8 +4,8 @@ version = "0.1.5"
 edition = "2021"
 description = "Rust client SDK for the Model Context Protocol (MCP)"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/darinmilner/mcp-client-rust"
-documentation = "https://github.com/darinmilner/mcp-client-rust"
+repository = "https://github.com/darinkishore/mcp_client_rust"
+documentation = "https://github.com/darinkishore/mcp_client_rust"
 keywords = ["mcp", "client", "protocol", "machine-learning", "ai"]
 categories = ["api-bindings", "development-tools"]
 
