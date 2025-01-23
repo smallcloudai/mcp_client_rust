@@ -27,6 +27,8 @@ Remote server support is unplanned.
 
 ### Spec Compliance
 
+The servers used with this client should implement the protocol to specification. 
+
 Tool call responses error out if the wrong schema is used or the server returns an error.
 
 
