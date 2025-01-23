@@ -257,7 +257,7 @@ impl Client {
         tracing::debug!(?tool, "Found tool");
         Ok(tool)
     }
-    
+
     /// Read a resource by URI
     pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, Error> {
         tracing::debug!(%uri, "Reading resource");
@@ -267,7 +267,7 @@ impl Client {
         tracing::debug!(?result, "Received resource content");
         result
     }
-    
+
     /// List available resources
     pub async fn list_resources(&self) -> Result<ListResourcesResult, Error> {
         tracing::debug!("Listing available resources");
