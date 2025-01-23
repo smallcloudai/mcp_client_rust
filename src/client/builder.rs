@@ -8,12 +8,20 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::Command;
 
+/// A builder for creating and initializing an MCP `Client` with a subprocess using stdio transport.
+/// This can be used to spawn a local MCP-compatible process and connect automatically.
 pub struct ClientBuilder {
+    /// The command/binary to invoke, e.g. "uvx".
     command: String,
+    /// Arguments passed to the command.
     args: Vec<String>,
+    /// Optional working directory for the subprocess.
     working_directory: Option<PathBuf>,
+    /// Optional client implementation details (name, version).
     implementation: Option<Implementation>,
+    /// Optional client capabilities to announce to the server upon initialization.
     capabilities: Option<ClientCapabilities>,
+    /// Environment variables for the subprocess.
     env: HashMap<String, String>,
 }
 
@@ -47,6 +55,7 @@ impl ClientBuilder {
         self
     }
 
+    /// Sets the working directory for the subprocess.
     pub fn directory<P: Into<PathBuf>>(mut self, dir: P) -> Self {
         let dir = dir.into();
         tracing::trace!(?dir, "Setting working directory for ClientBuilder");
@@ -69,12 +78,20 @@ impl ClientBuilder {
         self
     }
 
+    /// Adds an environment variable to the subprocess's environment.
     pub fn env(mut self, key: &str, value: &str) -> Self {
         tracing::trace!(%key, %value, "Adding environment variable to ClientBuilder");
         self.env.insert(key.to_string(), value.to_string());
         self
     }
 
+    /// Spawns the subprocess using the stored command, arguments, etc.,
+    /// creates a `StdioTransport` from the subprocess's stdin/stdout,
+    /// then returns an initialized `Client`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command cannot be spawned, or if initialization fails.
     pub async fn spawn_and_initialize(self) -> Result<Client, Error> {
         tracing::info!(
             command = %self.command,

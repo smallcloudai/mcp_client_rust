@@ -1,11 +1,13 @@
 //! # Model Context Protocol (MCP) Rust SDK
-//! 
+//!
 //! This SDK provides a Rust implementation of the Model Context Protocol (MCP), a protocol designed
 //! for communication between AI models and their runtime environments. The SDK supports both client
 //! and server implementations via a stdio-based transport layer.
 //!
+//! Located at https://github.com/darinkishore/mcp_client_rust
+//!
 //! ## Features
-//! 
+//!
 //! - Full implementation of MCP protocol specification
 //! - Stdio transport layer
 //! - Async/await support using Tokio
@@ -19,7 +21,7 @@
 //! use mcp_client_rs::client::Client;
 //! use mcp_client_rs::transport::stdio::StdioTransport;
 //! use tokio::io::{stdin, stdout};
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a Stdio transport using standard input/output
@@ -35,7 +37,7 @@
 //! ```
 //!
 //! ## Usage
-//! The client can be used to send requests and notifications to an MCP-compliant server. 
+//! The client can be used to send requests and notifications to an MCP-compliant server.
 //! See the [client](crate::client) module for details on initialization and tool usage.
 
 /// Client module provides the MCP client implementation
@@ -57,23 +59,20 @@ pub use protocol::{Notification, Request, Response};
 pub use types::*;
 
 /// The latest supported protocol version of MCP
-/// 
+///
 /// This version represents the most recent protocol specification that this SDK supports.
 /// It is used during client-server handshake to ensure compatibility.
 pub const LATEST_PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// List of all protocol versions supported by this SDK
-/// 
+///
 /// This list is used during version negotiation to determine compatibility between
 /// client and server. The versions are listed in order of preference, with the
 /// most recent version first.
-pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
-    LATEST_PROTOCOL_VERSION,
-    "2024-10-07",
-];
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[LATEST_PROTOCOL_VERSION, "2024-10-07"];
 
 /// JSON-RPC version used by the MCP protocol
-/// 
+///
 /// MCP uses JSON-RPC 2.0 for its message format. This constant is used to ensure
 /// all messages conform to the correct specification.
 pub const JSONRPC_VERSION: &str = "2.0";

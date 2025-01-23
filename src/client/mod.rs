@@ -2,9 +2,10 @@ use futures::StreamExt;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 use crate::{
+    ReadResourceResult,
     error::{Error, ErrorCode},
     protocol::{Notification, Request, RequestId},
     transport::{Message, Transport},
@@ -13,7 +14,6 @@ use crate::{
         GetPromptResult, Implementation, InitializeResult, ListPromptsResult, ListResourcesResult,
         ListToolsResult, ServerCapabilities, Tool,
     },
-    ReadResourceResult,
 };
 
 mod builder;
@@ -22,17 +22,25 @@ pub use builder::ClientBuilder;
 #[cfg(test)]
 mod test;
 
-/// MCP client state
+/// The MCP client struct, managing transport, requests, and responses.
+/// This client is suitable for connecting to an MCP-compliant server to
+/// send requests, receive responses, and handle notifications.
 pub struct Client {
+    /// The transport over which messages are sent/received.
     transport: Arc<dyn Transport>,
+    /// The server's capabilities, populated after a successful initialize call.
     server_capabilities: Arc<RwLock<Option<ServerCapabilities>>>,
+    /// Request ID counter to generate unique IDs for each request.
     request_counter: Arc<RwLock<i64>>,
+    /// An MPSC receiver for reading incoming responses from the transport.
     response_receiver: Arc<Mutex<tokio::sync::mpsc::UnboundedReceiver<Message>>>,
+    /// An MPSC sender for sending responses from the transport handler to this client.
     response_sender: tokio::sync::mpsc::UnboundedSender<Message>,
 }
 
 impl Client {
-    /// Create a new MCP client with the given transport
+    /// Creates a new MCP client with the given transport.
+    /// This does not perform initialization. You typically call `client.initialize(...)` next.
     pub fn new(transport: Arc<dyn Transport>) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let client = Self {
@@ -43,7 +51,7 @@ impl Client {
             response_sender: tx.clone(),
         };
 
-        // Start response handler task
+        // Spawn a task to forward all transport messages into our MPSC channel.
         let transport_clone = transport.clone();
         let tx_clone = tx.clone();
         tokio::spawn(async move {
@@ -71,9 +79,13 @@ impl Client {
         client
     }
 
-    /// Initialize the client according to MCP spec:
-    /// Send an "initialize" request with `clientInfo`, `capabilities`, and `protocolVersion`.
-    /// Receive `InitializeResult`, then send `notifications/initialized`.
+    /// Initializes the client by sending an "initialize" request containing:
+    /// - client implementation info
+    /// - client capabilities
+    /// - protocol version
+    ///
+    /// On success, updates the client's `server_capabilities` field and sends an
+    /// `initialized` notification to the server.
     pub async fn initialize(
         &self,
         implementation: Implementation,
@@ -92,10 +104,10 @@ impl Client {
 
         tracing::debug!(?init_result, "Received initialization response");
 
-        // Store the server capabilities
+        // Store the server capabilities.
         *self.server_capabilities.write().await = Some(init_result.capabilities.clone());
 
-        // After initialization completes, send the initialized notification
+        // After initialization completes, send the `initialized` notification.
         tracing::debug!("Sending initialized notification");
         self.notify("notifications/initialized", None).await?;
 
@@ -103,13 +115,19 @@ impl Client {
         Ok(init_result)
     }
 
-    /// Send a request to the server and wait for the response (30s timeout).
+    /// Sends a request to the server with the given method and optional parameters,
+    /// then waits up to 30 seconds for a matching response.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transport fails, the server returns an error,
+    /// or no response is received within 30 seconds.
     pub async fn request(
         &self,
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, Error> {
-        // increment request ID
+        // Increment request ID
         let mut counter = self.request_counter.write().await;
         *counter += 1;
         let id = RequestId::Number(*counter);
@@ -120,7 +138,7 @@ impl Client {
         // Send request
         self.transport.send(Message::Request(request)).await?;
 
-        // Wait for matching response
+        // Wait for a matching response (by request ID) or a 30s timeout
         let mut rx = self.response_receiver.lock().await;
         match tokio::time::timeout(std::time::Duration::from_secs(30), async {
             while let Some(message) = rx.recv().await {
@@ -154,7 +172,7 @@ impl Client {
                 }
             }
 
-            // Channel closed
+            // Channel closed or no more messages.
             Err(Error::protocol(
                 ErrorCode::InternalError,
                 "Connection closed while waiting for response",
@@ -172,7 +190,8 @@ impl Client {
         }
     }
 
-    /// Send a notification to the server
+    /// Sends a notification to the server using the given method and optional parameters.
+    /// Notifications do not expect a response from the server.
     pub async fn notify(
         &self,
         method: &str,
@@ -185,21 +204,20 @@ impl Client {
             .await
     }
 
-    /// Get the server capabilities
+    /// Returns the cached server capabilities if the client has already initialized.
     pub async fn capabilities(&self) -> Option<ServerCapabilities> {
         let caps = self.server_capabilities.read().await.clone();
         tracing::trace!(?caps, "Retrieved server capabilities");
         caps
     }
 
-    /// Close the client connection
+    /// Shuts down the client by closing the transport. This does not send a server shutdown request.
     pub async fn shutdown(&self) -> Result<(), Error> {
         tracing::info!("Shutting down MCP client");
-        // Close transport
         self.transport.close().await
     }
 
-    /// List available tools
+    /// Lists available tools on the server by calling `tools/list`.
     pub async fn list_tools(&self) -> Result<ListToolsResult, Error> {
         tracing::debug!("Listing available tools");
         let response = self.request("tools/list", None).await?;
@@ -208,7 +226,9 @@ impl Client {
         result
     }
 
-    /// Call a tool with the given name and arguments. If `isError` is `true`, treat it as an error.
+    /// Calls a tool on the server by name, passing the specified arguments as JSON.
+    /// If the returned `CallToolResult` has `is_error` set to `true`, this method converts
+    /// it into an `Error::Other`.
     pub async fn call_tool(
         &self,
         name: &str,
@@ -226,7 +246,7 @@ impl Client {
 
         let tool_result: CallToolResult = serde_json::from_value(response)?;
         if tool_result.is_error {
-            // We treat tool-level errors (isError=true) as a Rust error
+            // We treat tool-level errors (isError=true) as a Rust error.
             let maybe_msg = tool_result
                 .content
                 .iter()
@@ -249,7 +269,7 @@ impl Client {
         Ok(tool_result)
     }
 
-    /// Get a specific tool by name from the available tools
+    /// Retrieves a single tool from the server by name, returning `Some(tool)` if found, or `None` otherwise.
     pub async fn get_tool(&self, name: &str) -> Result<Option<Tool>, Error> {
         tracing::debug!(%name, "Getting specific tool");
         let tools = self.list_tools().await?;
@@ -258,7 +278,7 @@ impl Client {
         Ok(tool)
     }
 
-    /// Read a resource by URI
+    /// Reads a resource by URI from the server, calling `resources/read`.
     pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, Error> {
         tracing::debug!(%uri, "Reading resource");
         let params = serde_json::json!({ "uri": uri });
@@ -268,7 +288,7 @@ impl Client {
         result
     }
 
-    /// List available resources
+    /// Lists resources by calling `resources/list` on the server.
     pub async fn list_resources(&self) -> Result<ListResourcesResult, Error> {
         tracing::debug!("Listing available resources");
         let response = self.request("resources/list", None).await?;

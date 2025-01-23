@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use futures::Stream;
-use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::pin::Pin;
 
-use crate::protocol::{Notification, Request, Response};
 use crate::Error;
+use crate::protocol::{Notification, Request, Response};
 
 /// A message that can be sent over a transport
 #[derive(Debug, Clone)]
@@ -55,30 +55,40 @@ impl<'de> Visitor<'de> for MessageVisitor {
         let value = serde_json::Value::Object(obj);
 
         // Determine message type based on JSON-RPC 2.0 spec
-        if let Some(id_val) = value.get("id") {
+        if let Some(_id_val) = value.get("id") {
             // If `id` is present, it must be a valid string or number for request/response
             if value.get("method").is_some() {
                 // Request must have `method` and `id`
                 tracing::debug!("Deserializing as request...");
                 tracing::debug!("Value: {:?}", value);
-                Ok(Message::Request(Request::deserialize(value).map_err(de::Error::custom)?))
+                Ok(Message::Request(
+                    Request::deserialize(value).map_err(de::Error::custom)?,
+                ))
             } else if value.get("result").is_some() || value.get("error").is_some() {
                 // Response must have `id` and either result or error
                 tracing::debug!("Deserializing as response...");
                 tracing::debug!("Value: {:?}", value);
-                Ok(Message::Response(Response::deserialize(value).map_err(de::Error::custom)?))
+                Ok(Message::Response(
+                    Response::deserialize(value).map_err(de::Error::custom)?,
+                ))
             } else {
                 // `id` present but no `method` or `result/error` => invalid
-                Err(de::Error::custom("invalid message: 'id' present without 'method' or 'result/error'"))
+                Err(de::Error::custom(
+                    "invalid message: 'id' present without 'method' or 'result/error'",
+                ))
             }
         } else if value.get("method").is_some() {
             // Notification (no id, has method)
             tracing::debug!("Deserializing as notification...");
             tracing::debug!("Value: {:?}", value);
-            Ok(Message::Notification(Notification::deserialize(value).map_err(de::Error::custom)?))
+            Ok(Message::Notification(
+                Notification::deserialize(value).map_err(de::Error::custom)?,
+            ))
         } else {
             // No `id`, no `method` => invalid
-            Err(de::Error::custom("invalid message: missing 'id' and 'method'"))
+            Err(de::Error::custom(
+                "invalid message: missing 'id' and 'method'",
+            ))
         }
     }
 }

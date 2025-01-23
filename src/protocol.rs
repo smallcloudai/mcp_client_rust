@@ -55,7 +55,11 @@ pub struct ResponseError {
 }
 
 impl Request {
-    pub fn new(method: impl Into<String>, params: Option<serde_json::Value>, id: RequestId) -> Self {
+    pub fn new(
+        method: impl Into<String>,
+        params: Option<serde_json::Value>,
+        id: RequestId,
+    ) -> Self {
         Self {
             jsonrpc: crate::JSONRPC_VERSION.to_string(),
             method: method.into(),
@@ -150,7 +154,7 @@ mod tests {
         let id = RequestId::Number(1);
         let params = Some(json!({"key": "value"}));
         let request = Request::new("test_method", params.clone(), id.clone());
-        
+
         assert_eq!(request.jsonrpc, JSONRPC_VERSION);
         assert_eq!(request.method, "test_method");
         assert_eq!(request.params, params);
@@ -161,7 +165,7 @@ mod tests {
     fn test_notification_creation() {
         let params = Some(json!({"event": "update"}));
         let notification = Notification::new("test_event", params.clone());
-        
+
         assert_eq!(notification.jsonrpc, JSONRPC_VERSION);
         assert_eq!(notification.method, "test_event");
         assert_eq!(notification.params, params);
@@ -172,7 +176,7 @@ mod tests {
         let id = RequestId::String("test-1".to_string());
         let result = Some(json!({"status": "ok"}));
         let response = Response::success(id.clone(), result.clone());
-        
+
         assert_eq!(response.jsonrpc, JSONRPC_VERSION);
         assert_eq!(response.id, id);
         assert_eq!(response.result, result);
@@ -188,11 +192,11 @@ mod tests {
             data: Some(json!({"details": "missing method"})),
         };
         let response = Response::error(id.clone(), error.clone());
-        
+
         assert_eq!(response.jsonrpc, JSONRPC_VERSION);
         assert_eq!(response.id, id);
         assert!(response.result.is_none());
-        
+
         let response_error = response.error.unwrap();
         assert_eq!(response_error.code, error.code);
         assert_eq!(response_error.message, error.message);
@@ -202,7 +206,7 @@ mod tests {
     fn test_request_id_display() {
         let num_id = RequestId::Number(42);
         let str_id = RequestId::String("test-id".to_string());
-        
+
         assert_eq!(num_id.to_string(), "42");
         assert_eq!(str_id.to_string(), "test-id");
     }

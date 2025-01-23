@@ -159,7 +159,10 @@ async fn test_resource_list_after_adding_note() -> Result<(), Error> {
             .unwrap_or(false)
     });
 
-    assert!(found_note, "Expected 'listed-note' among the listed resources");
+    assert!(
+        found_note,
+        "Expected 'listed-note' among the listed resources"
+    );
 
     Ok(())
 }
@@ -256,10 +259,12 @@ async fn test_ping_request() -> Result<(), Error> {
 async fn test_set_log_level() -> Result<(), Error> {
     let client = create_test_client().await?;
     // The server might not implement logging. Let's just attempt "logging/setLevel".
-    let set_result = client.request(
-        "logging/setLevel",
-        Some(serde_json::json!({ "level": "info" })),
-    ).await;
+    let set_result = client
+        .request(
+            "logging/setLevel",
+            Some(serde_json::json!({ "level": "info" })),
+        )
+        .await;
     match set_result {
         Ok(_) => {
             // If it returned a result, that's a success

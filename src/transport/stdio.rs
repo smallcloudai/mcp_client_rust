@@ -13,9 +13,11 @@ use crate::{
 
 /// A transport that uses provided async read/write streams for MCP communication.
 pub struct StdioTransport<W> {
+    /// A mutex-protected writer for sending messages.
     writer: tokio::sync::Mutex<W>,
+    /// A broadcast receiver for incoming messages read from the stream.
     receiver: broadcast::Receiver<Result<Message, Error>>,
-    // Keep sender to prevent it from dropping.
+    // Keep sender in scope to avoid dropping.
     _sender: broadcast::Sender<Result<Message, Error>>,
 }
 
@@ -23,7 +25,11 @@ impl<W> StdioTransport<W>
 where
     W: AsyncWrite + Unpin + Send + 'static,
 {
-    /// Create a StdioTransport by providing a read and a write stream.
+    /// Creates a new StdioTransport by providing a read and a write stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error` if transport creation fails (e.g., due to I/O issues).
     pub fn with_streams<R>(read: R, write: W) -> Result<Self, Error>
     where
         R: AsyncRead + Unpin + Send + 'static,
@@ -40,7 +46,9 @@ where
                 line.clear();
                 match reader.read_line(&mut line).await {
                     Ok(0) => {
-                        tracing::debug!("EOF reached, send an EOF error so the stream ends gracefully");
+                        tracing::debug!(
+                            "EOF reached, send an EOF error so the stream ends gracefully"
+                        );
                         let _ = sender_clone.send(Err(Error::Other("EOF".to_string())));
                         break;
                     }
@@ -77,6 +85,8 @@ impl<W> Transport for StdioTransport<W>
 where
     W: AsyncWrite + Unpin + Send + 'static,
 {
+    /// Sends a message by writing JSON to the underlying writer stream,
+    /// followed by a newline, and then flushing.
     async fn send(&self, message: Message) -> Result<(), Error> {
         let json = serde_json::to_string(&message)?;
         let mut writer = self.writer.lock().await;
@@ -92,6 +102,7 @@ where
         Ok(())
     }
 
+    /// Provides a stream of incoming messages read from the stdin or other input stream.
     fn receive(&self) -> Pin<Box<dyn Stream<Item = Result<Message, Error>> + Send>> {
         let rx = self.receiver.resubscribe();
         Box::pin(futures::stream::unfold(rx, |mut rx| async move {
