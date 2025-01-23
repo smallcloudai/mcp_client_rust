@@ -40,8 +40,6 @@ The `Client` provides typed methods to interact with the server:
 - `call_tool(name, arguments) -> Result<CallToolResult, Error>`
 - `read_resource(uri) -> Result<ReadResourceResult, Error>`
 
-This spares you the hassle of manually constructing JSON requests and parsing raw JSON responses.
-
 For example:
 ```rust
 let resources = client.list_resources().await?;
