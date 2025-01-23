@@ -40,7 +40,7 @@ where
                 line.clear();
                 match reader.read_line(&mut line).await {
                     Ok(0) => {
-                        // EOF reached, send an EOF error so the stream ends gracefully.
+                        tracing::debug!("EOF reached, send an EOF error so the stream ends gracefully");
                         let _ = sender_clone.send(Err(Error::Other("EOF".to_string())));
                         break;
                     }

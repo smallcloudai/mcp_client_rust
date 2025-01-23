@@ -41,11 +41,11 @@ impl<'de> Visitor<'de> for MessageVisitor {
     where
         M: MapAccess<'de>,
     {
-        eprintln!("Attempting to deserialize message...");
+        tracing::debug!("Attempting to deserialize message...");
 
         // Collect all fields into a Value first
         let mut obj = serde_json::Map::new();
-        
+
         while let Some(key) = map.next_key::<String>()? {
             let value = map.next_value()?;
             obj.insert(key, value);
@@ -53,19 +53,19 @@ impl<'de> Visitor<'de> for MessageVisitor {
 
         // Now analyze the collected object
         let value = serde_json::Value::Object(obj);
-        
+
         // Determine message type based on JSON-RPC 2.0 spec
         if let Some(id_val) = value.get("id") {
             // If `id` is present, it must be a valid string or number for request/response
             if value.get("method").is_some() {
                 // Request must have `method` and `id`
-                eprintln!("Deserializing as request...");
-                eprintln!("Value: {:?}", value);
+                tracing::debug!("Deserializing as request...");
+                tracing::debug!("Value: {:?}", value);
                 Ok(Message::Request(Request::deserialize(value).map_err(de::Error::custom)?))
             } else if value.get("result").is_some() || value.get("error").is_some() {
                 // Response must have `id` and either result or error
-                eprintln!("Deserializing as response...");
-                eprintln!("Value: {:?}", value);
+                tracing::debug!("Deserializing as response...");
+                tracing::debug!("Value: {:?}", value);
                 Ok(Message::Response(Response::deserialize(value).map_err(de::Error::custom)?))
             } else {
                 // `id` present but no `method` or `result/error` => invalid
@@ -73,8 +73,8 @@ impl<'de> Visitor<'de> for MessageVisitor {
             }
         } else if value.get("method").is_some() {
             // Notification (no id, has method)
-            eprintln!("Deserializing as notification...");
-            eprintln!("Value: {:?}", value);
+            tracing::debug!("Deserializing as notification...");
+            tracing::debug!("Value: {:?}", value);
             Ok(Message::Notification(Notification::deserialize(value).map_err(de::Error::custom)?))
         } else {
             // No `id`, no `method` => invalid
@@ -98,10 +98,10 @@ impl Serialize for Message {
         S: serde::Serializer,
     {
         let mut map = serializer.serialize_map(None)?;
-        
+
         // Always add type field for our protocol
-        map.serialize_entry("type", self.message_type())?;
-        
+        // map.serialize_entry("type", self.message_type())?;
+
         // Add message-specific fields
         match self {
             Message::Request(req) => {
@@ -130,7 +130,7 @@ impl Serialize for Message {
                 }
             }
         }
-        
+
         map.end()
     }
 }
