@@ -66,6 +66,8 @@ Contributions are welcome! Please open an issue or submit a PR if you have impro
 3. Add your changes and tests
 4. Submit a Pull Request
 
+Please @ darinkishore in the PR if you do send one over. 
+
 
 ### Credits
 - [MCP Rust SDK](https://github.com/Derek-X-Wang/mcp-rust-sdk)
