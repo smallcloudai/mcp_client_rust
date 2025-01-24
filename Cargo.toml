@@ -1,6 +1,6 @@
 [package]
 name = "mcp_client_rs"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "Rust client SDK for the Model Context Protocol (MCP)"
 license = "MIT OR Apache-2.0"
