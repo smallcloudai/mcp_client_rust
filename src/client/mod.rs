@@ -90,7 +90,7 @@ impl Client {
     /// On success, updates the client's `server_capabilities` field and sends an
     /// `initialized` notification to the server.
     pub async fn initialize(
-        &self,
+        &mut self,
         implementation: Implementation,
         capabilities: ClientCapabilities,
     ) -> Result<InitializeResult, Error> {
@@ -126,7 +126,7 @@ impl Client {
     /// Returns an error if the transport fails, the server returns an error,
     /// or no response is received within 30 seconds.
     pub async fn request(
-        &self,
+        &mut self,
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, Error> {
@@ -143,53 +143,71 @@ impl Client {
 
         // Wait for a matching response (by request ID) or a 30s timeout
         let mut rx = self.response_receiver.lock().await;
-        match tokio::time::timeout(std::time::Duration::from_secs(30), async {
-            while let Some(message) = rx.recv().await {
-                match message {
-                    Message::Response(response) if response.id == id => {
-                        tracing::debug!(?response, "Received matching MCP response");
-                        if let Some(error) = response.error {
-                            tracing::error!(?error, "Server returned error");
-                            return Err(Error::Protocol {
-                                code: error.code.into(),
-                                message: error.message,
-                                data: error.data,
+        
+        tokio::select! {
+            // Branch 1: Handle the message receiving logic
+            result = async {
+                while let Some(message) = rx.recv().await {
+                    match message {
+                        Message::Response(response) if response.id == id => {
+                            tracing::debug!(?response, "Received matching MCP response");
+                            if let Some(error) = response.error {
+                                tracing::error!(?error, "Server returned error");
+                                return Err(Error::Protocol {
+                                    code: error.code.into(),
+                                    message: error.message,
+                                    data: error.data,
+                                });
+                            }
+                            return response.result.ok_or_else(|| {
+                                Error::protocol(ErrorCode::InternalError, "Response missing result")
                             });
                         }
-                        return response.result.ok_or_else(|| {
-                            Error::protocol(ErrorCode::InternalError, "Response missing result")
-                        });
-                    }
-                    Message::Response(response) => {
-                        tracing::debug!(
-                            ?response,
-                            "Received non-matching response, continuing to wait"
-                        );
-                    }
-                    Message::Notification(notif) => {
-                        tracing::debug!(?notif, "Received notification while waiting for response");
-                    }
-                    Message::Request(req) => {
-                        tracing::debug!(?req, "Received request while waiting for response");
+                        Message::Response(response) => {
+                            tracing::debug!(
+                                ?response,
+                                "Received non-matching response, continuing to wait"
+                            );
+                        }
+                        Message::Notification(notif) => {
+                            tracing::debug!(?notif, "Received notification while waiting for response");
+                        }
+                        Message::Request(req) => {
+                            tracing::debug!(?req, "Received request while waiting for response");
+                        }
                     }
                 }
-            }
 
-            // Channel closed or no more messages.
-            Err(Error::protocol(
-                ErrorCode::InternalError,
-                "Connection closed while waiting for response",
-            ))
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => {
+                // Channel closed or no more messages.
+                Err(Error::protocol(
+                    ErrorCode::InternalError,
+                    "Connection closed while waiting for response",
+                ))
+            } => result,
+            
+            // Branch 2: Periodically check if the process is still alive, or timeout after 30s
+            result = async {
+                for _ in 1..=100 {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    
+                    if let Some(process) = &mut self.subprocess {
+                        match process.try_wait() {
+                            Ok(None) => continue,
+                            Ok(Some(s)) => {
+                                return Err(Error::Other(format!("Process exited with status {:?} while waiting for response", s)));
+                            },
+                            Err(e) => {
+                                return Err(Error::Other(format!("Error checking process status: {}", e)));
+                            }
+                        }
+                    }
+                }
+                
                 tracing::error!("Request to '{}' timed out after 30 seconds", method);
                 Err(Error::Other(format!(
                     "Request to '{method}' timed out after 30 seconds"
                 )))
-            }
+            } => result,
         }
     }
 
@@ -235,7 +253,7 @@ impl Client {
     }
 
     /// Lists available tools on the server by calling `tools/list`.
-    pub async fn list_tools(&self) -> Result<ListToolsResult, Error> {
+    pub async fn list_tools(&mut self) -> Result<ListToolsResult, Error> {
         tracing::debug!("Listing available tools");
         let response = self.request("tools/list", None).await?;
         let result = serde_json::from_value(response).map_err(Error::from);
@@ -247,7 +265,7 @@ impl Client {
     /// If the returned `CallToolResult` has `is_error` set to `true`, this method converts
     /// it into an `Error::Other`.
     pub async fn call_tool(
-        &self,
+        &mut self,
         name: &str,
         arguments: serde_json::Value,
     ) -> Result<CallToolResult, Error> {
@@ -287,7 +305,7 @@ impl Client {
     }
 
     /// Retrieves a single tool from the server by name, returning `Some(tool)` if found, or `None` otherwise.
-    pub async fn get_tool(&self, name: &str) -> Result<Option<Tool>, Error> {
+    pub async fn get_tool(&mut self, name: &str) -> Result<Option<Tool>, Error> {
         tracing::debug!(%name, "Getting specific tool");
         let tools = self.list_tools().await?;
         let tool = tools.tools.into_iter().find(|t| t.name == name);
@@ -296,7 +314,7 @@ impl Client {
     }
 
     /// Reads a resource by URI from the server, calling `resources/read`.
-    pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, Error> {
+    pub async fn read_resource(&mut self, uri: &str) -> Result<ReadResourceResult, Error> {
         tracing::debug!(%uri, "Reading resource");
         let params = serde_json::json!({ "uri": uri });
         let response = self.request("resources/read", Some(params)).await?;
@@ -306,7 +324,7 @@ impl Client {
     }
 
     /// Lists resources by calling `resources/list` on the server.
-    pub async fn list_resources(&self) -> Result<ListResourcesResult, Error> {
+    pub async fn list_resources(&mut self) -> Result<ListResourcesResult, Error> {
         tracing::debug!("Listing available resources");
         let response = self.request("resources/list", None).await?;
         let result = serde_json::from_value(response).map_err(Error::from);
