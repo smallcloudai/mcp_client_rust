@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use tempfile::NamedTempFile;
 use tokio::process::Command;
 
 /// A builder for creating and initializing an MCP `Client` with a subprocess using stdio transport.
@@ -87,12 +88,16 @@ impl ClientBuilder {
 
     /// Spawns the subprocess using the stored command, arguments, etc.,
     /// creates a `StdioTransport` from the subprocess's stdin/stdout,
-    /// then returns an initialized `Client`.
+    /// then returns a NOT initialized `Client`.
+    /// You should then call `Client::initialize` to initialize the client.
+    /// 
+    /// Use `spawn_and_initialize` to do it in one step if you don't need to 
+    /// access logs or client details in case initialization fails.
     ///
     /// # Errors
     ///
     /// Returns an error if the command cannot be spawned, or if initialization fails.
-    pub async fn spawn_and_initialize(self) -> Result<Client, Error> {
+    pub async fn spawn(self) -> Result<(Client, Implementation, ClientCapabilities), Error> {
         tracing::info!(
             command = %self.command,
             args = ?self.args,
@@ -113,7 +118,21 @@ impl ClientBuilder {
             cmd.env(key, value);
         }
 
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
+        let stderr_file = NamedTempFile::new().map_err(|e| {
+            tracing::error!(error = %e, "Failed to create temporary file for stderr");
+            Error::Io(e.to_string())
+        })?;
+        
+        tracing::debug!(path = ?stderr_file.path(), "Created temporary file for stderr");
+        
+        let stderr_fd = stderr_file.as_file().try_clone().map_err(|e| {
+            tracing::error!(error = %e, "Failed to clone stderr file handle");
+            Error::Io(e.to_string())
+        })?;
+        
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(stderr_fd));
 
         tracing::debug!("Spawning process");
         let mut child = cmd.spawn().map_err(|e| {
@@ -135,7 +154,7 @@ impl ClientBuilder {
 
         tracing::debug!("Creating StdioTransport");
         let transport = StdioTransport::with_streams(child_stdout, child_stdin)?;
-        let mut client = Client::new(Arc::new(transport), Some(child));
+        let client = Client::new(Arc::new(transport), Some(child), Some(stderr_file));
 
         let implementation = self.implementation.unwrap_or_else(|| {
             let default_impl = Implementation {
@@ -150,6 +169,19 @@ impl ClientBuilder {
             tracing::debug!("Using default capabilities");
             ClientCapabilities::default()
         });
+
+        Ok((client, implementation, capabilities))
+    }
+
+    /// Spawns the subprocess using the stored command, arguments, etc.,
+    /// creates a `StdioTransport` from the subprocess's stdin/stdout,
+    /// then returns an initialized `Client`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command cannot be spawned, or if initialization fails.
+    pub async fn spawn_and_initialize(self) -> Result<Client, Error> {
+        let (mut client, implementation, capabilities) = self.spawn().await?;
 
         tracing::debug!(?implementation, ?capabilities, "Initializing client");
         client.initialize(implementation, capabilities).await?;
