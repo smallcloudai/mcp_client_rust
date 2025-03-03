@@ -1,6 +1,8 @@
 use futures::StreamExt;
 use serde_json::Value;
 use std::sync::Arc;
+use tempfile::NamedTempFile;
+use tokio::process::Child;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{Duration, timeout};
 
@@ -38,12 +40,14 @@ pub struct Client {
     response_sender: tokio::sync::mpsc::UnboundedSender<Message>,
     /// To handle shutdown, in stdin/stdout case we also need to shut down subprocess
     subprocess: Option<tokio::process::Child>,
+    /// Temporary file for stderr output - will be automatically deleted when dropped
+    stderr_file: Option<NamedTempFile>,
 }
 
 impl Client {
     /// Creates a new MCP client with the given transport.
     /// This does not perform initialization. You typically call `client.initialize(...)` next.
-    pub fn new(transport: Arc<dyn Transport>, subprocess: Option<tokio::process::Child>) -> Self {
+    pub fn new(transport: Arc<dyn Transport>, subprocess: Option<Child>, stderr_file: Option<NamedTempFile>) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let client = Self {
             transport: transport.clone(),
@@ -52,6 +56,7 @@ impl Client {
             response_receiver: Arc::new(Mutex::new(rx)),
             response_sender: tx.clone(),
             subprocess,
+            stderr_file,
         };
 
         // Spawn a task to forward all transport messages into our MPSC channel.
