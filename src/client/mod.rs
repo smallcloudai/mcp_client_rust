@@ -198,8 +198,8 @@ impl Client {
                     if let Some(process) = &mut self.subprocess {
                         match process.try_wait() {
                             Ok(None) => continue,
-                            Ok(Some(s)) => {
-                                return Err(Error::Other(format!("Process exited with status {:?} while waiting for response", s)));
+                            Ok(Some(exit_status)) => {
+                                return Err(Error::Other(format!("Process exited with status: {}", exit_status)));
                             },
                             Err(e) => {
                                 return Err(Error::Other(format!("Error checking process status: {}", e)));
@@ -335,5 +335,30 @@ impl Client {
         let result = serde_json::from_value(response).map_err(Error::from);
         tracing::debug!(?result, "Received resources list");
         result
+    }
+
+    /// Reads last `tail_lines` lines from stderr file (100 by default).
+    pub async fn get_stderr(&self, tail_lines: Option<usize>) -> Result<String, Error> {
+        if let Some(file) = &self.stderr_file {
+            let path = file.path();
+            let line_count = tail_lines.unwrap_or(100);
+            
+            let file = tokio::fs::File::open(path).await?;       
+            let reader = tokio::io::BufReader::new(file);
+
+            let mut lines_stream = tokio::io::AsyncBufReadExt::lines(reader);
+            let mut last_lines = std::collections::VecDeque::with_capacity(line_count);
+            
+            while let Some(line) = lines_stream.next_line().await? {
+                if last_lines.len() >= line_count {
+                    last_lines.pop_front();
+                }
+                last_lines.push_back(line);
+            }
+            
+            Ok(last_lines.into_iter().collect::<Vec<_>>().join("\n"))
+        } else {
+            Err(Error::Other("No stderr file available".to_string()))
+        }
     }
 }
