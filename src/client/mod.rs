@@ -239,9 +239,17 @@ impl Client {
 
     /// Shuts down the client by closing the transport. This does not send a server shutdown request.
     pub async fn shutdown(&mut self) -> Result<(), Error> {
+        Self::perform_shutdown(self.transport.clone(), &mut self.subprocess).await
+    }
+
+    async fn perform_shutdown(
+        transport: Arc<dyn Transport>,
+        child: &mut Option<Child>
+    ) -> Result<(), Error> {
         tracing::info!("Shutting down MCP client");
-        self.transport.close().await?;
-        if let Some(mut child) = self.subprocess.take() {
+        transport.close().await?;
+        
+        if let Some(child) = child.as_mut() {
             const TIMEOUT: u64 = 2;
             if let Ok(None) = child.try_wait() {
                 tracing::info!("Have an associated subprocess, waiting {}s", TIMEOUT);
@@ -360,5 +368,19 @@ impl Client {
         } else {
             Err(Error::Other("No stderr file available".to_string()))
         }
+    }
+}
+
+// Like calling `shutdown` explicitly, but not waiting for it to complete.
+impl Drop for Client {
+    fn drop(&mut self) {
+        let mut subprocess = self.subprocess.take();
+        let transport = self.transport.clone();
+        
+        tokio::spawn(async move {
+            if let Err(e) = Client::perform_shutdown(transport, &mut subprocess).await {
+                tracing::error!("Error during shutdown in drop: {e}");
+            }
+        });
     }
 }
